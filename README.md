@@ -72,3 +72,7 @@ Takes effect the next time the grid opens.
 - `Sources/Overlay.swift` — selection logic, clicking, drawing the grid
 - `Sources/main.swift` — menu bar item and permission handling
 - `build.sh` — compiles and signs `build/Keypoint.app`
+
+## License
+
+MIT — see [LICENSE](LICENSE).
