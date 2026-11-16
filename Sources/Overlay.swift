@@ -9,9 +9,10 @@ final class OverlayController {
     private let view = GridView()
     private var screen: NSScreen?
 
-    /// Current region in view coordinates (top-left origin).
-    private var region: CGRect = .zero
-    private var history: [CGRect] = []
+    /// Current grid; its rect is the region in view coordinates (top-left origin).
+    private var grid = Grid(rect: .zero)
+    private var region: CGRect { grid.rect }
+    private var history: [Grid] = []
     private var shiftUsed = false
 
     /// Number of levels before the click fires for normal-sized selections.
@@ -21,25 +22,56 @@ final class OverlayController {
         return v > 0 ? v : 2
     }
 
+    /// Lean the next grid toward the second key of a pair (A then B → small
+    /// cells near B): ratio of largest to smallest cell. Off (1) by default.
+    /// Try:  defaults write local.keypoint skew -float 3
+    var skew: CGFloat {
+        let v = UserDefaults.standard.double(forKey: "skew")
+        return v > 1 ? CGFloat(v) : 1
+    }
+
     /// How much bigger than a normal last-level cell a grid cell may be and
     /// still count as the last level.
     private let finalSlack: CGFloat = 1.5
 
-    /// The level showing `rect` is the last one (next pair clicks) when its grid
-    /// cells are no bigger than a normal last-level cell — screen ÷ (10ⁿ, 4ⁿ)
-    /// for n = `maxLevels`. Selecting a wide span (e.g. A + L) makes the cells
-    /// bigger than that, so another level is added to keep precision.
+    /// Smallest grid cell (points): enough for the smallest key label (8pt
+    /// with its pill). Grids that would be finer grow to this instead.
+    private let minCellSize = CGSize(width: 18, height: 18)
+
+    /// A cell is fine enough to click in when it's no bigger than a normal
+    /// last-level cell — screen ÷ (10ⁿ, 4ⁿ) for n = `maxLevels`, with
+    /// `finalSlack` tolerance. Selecting a wide span (e.g. A + L), or a big
+    /// cell at the coarse end of a leaning grid, fails this, so that pair
+    /// zooms one more level instead of clicking.
     ///
     /// Size is compared by cell diagonal (≈ worst-case distance from the aimed
     /// point), so a wide-but-short cell can still count as precise enough.
-    private func isFinalLevel(_ rect: CGRect) -> Bool {
-        let screen = view.bounds.size
-        let n = Double(maxLevels)
-        let baseW = screen.width / CGFloat(pow(Double(KeyLayout.columnCount), n))
-        let baseH = screen.height / CGFloat(pow(Double(KeyLayout.rowCount), n))
-        let cellW = rect.width / CGFloat(KeyLayout.columnCount)
-        let cellH = rect.height / CGFloat(KeyLayout.rowCount)
-        return hypot(cellW, cellH) <= hypot(baseW, baseH) * finalSlack
+    ///
+    /// On a leaning grid the diagonal alone is too forgiving: last-level cells
+    /// are tall and narrow, so a visibly wide bail-out cell can still pass. So
+    /// a cell also zooms when it's clearly bigger than an even cell of this
+    /// grid on some axis (`evenTolerance`) *and* bigger than a normal
+    /// last-level cell on that axis — the second part stops the extra level
+    /// (and anything deeper) from drilling down again.
+    private func isClickable(_ cell: CGSize, in grid: Grid) -> Bool {
+        grid.isClickable(cell, screen: view.bounds.size, levels: maxLevels, slack: finalSlack)
+    }
+
+    /// Some pair on this grid would click (its finest cells are small enough).
+    private func isFinalLevel(_ grid: Grid) -> Bool {
+        isClickable(grid.smallestCell, in: grid)
+    }
+
+    /// Every pair on this grid would click (its coarsest cells are small enough).
+    private func isFullyFinal(_ grid: Grid) -> Bool {
+        isClickable(grid.largestCell, in: grid)
+    }
+
+    /// A pair clicks only if both keys' cells are fine enough; otherwise it
+    /// drills down another level.
+    private func pairClicks(_ a: (row: Int, col: Int), _ b: (row: Int, col: Int)) -> Bool {
+        isClickable(grid.cell(row: a.row, col: a.col).size, in: grid)
+            && isClickable(grid.cell(row: b.row, col: b.col).size, in: grid)
     }
 
     func toggle() { isActive ? cancel() : show() }
@@ -82,7 +114,7 @@ final class OverlayController {
         win.setFrame(scr.frame, display: false)
         view.frame = CGRect(origin: .zero, size: scr.frame.size)
 
-        region = view.bounds
+        grid = Grid(rect: view.bounds)
         history = []
         shiftUsed = false
         refresh(shiftDown: NSEvent.modifierFlags.contains(.shift))
@@ -116,8 +148,8 @@ final class OverlayController {
         case KeyLayout.delete:
             if pending != nil { clearPending(); refresh(shiftDown: shift); return }
             if let prev = history.popLast() {
-                region = prev
-                moveCursor(to: center(of: region))
+                grid = prev
+                moveCursor(to: global(grid.focus))
                 refresh(shiftDown: shift)
             } else {
                 cancel()
@@ -127,8 +159,8 @@ final class OverlayController {
             // (If one key of a pair is pending, click that key's cell.)
             if let p = pending {
                 clearPending()
-                history.append(region)
-                region = cellRect(from: p, to: p)
+                history.append(grid)
+                grid = Grid(rect: grid.span(from: p, to: p))
             }
             finish(rightClick: shiftUsed)
         default:
@@ -154,49 +186,40 @@ final class OverlayController {
 
     /// Zoom into the box spanning the centres of two keys (the same key twice =
     /// that key's cell). Any axis thinner than one cell is padded to one cell,
-    /// centred on the line between the keys.
+    /// centred on the line between the keys. Order matters when `skew` is on:
+    /// the next grid leans toward `b`.
     private func select(from a: (row: Int, col: Int), to b: (row: Int, col: Int), shift: Bool) {
-        let sub = cellRect(from: a, to: b)
-        let wasFinal = isFinalLevel(region)
-        history.append(region)
-        region = sub
+        let wasFinal = pairClicks(a, b)
+        history.append(grid)
+        grid = Grid(rect: grid.span(from: a, to: b),
+                    leanX: .toward(b.col, from: a.col),
+                    leanY: .toward(b.row, from: a.row),
+                    skew: skew)
 
         if wasFinal {
             finish(rightClick: shiftUsed)
         } else {
-            moveCursor(to: center(of: region))
+            // Too small to label every cell? Grow it (around the selection) until it isn't.
+            grid = grid.legible(minCell: minCellSize, within: view.bounds)
+            moveCursor(to: global(grid.focus))
             refresh(shiftDown: shift || shiftUsed)
         }
-    }
-
-    private func cellRect(from a: (row: Int, col: Int), to b: (row: Int, col: Int)) -> CGRect {
-        func span(_ p: Int, _ q: Int) -> (lo: Double, hi: Double) {
-            var lo = Double(min(p, q)) + 0.5, hi = Double(max(p, q)) + 0.5
-            if hi - lo < 1 { let mid = (lo + hi) / 2; lo = mid - 0.5; hi = mid + 0.5 }
-            return (lo, hi)
-        }
-        let w = region.width / CGFloat(KeyLayout.columnCount)
-        let h = region.height / CGFloat(KeyLayout.rowCount)
-        let x = span(a.col, b.col), y = span(a.row, b.row)
-        return CGRect(x: region.minX + CGFloat(x.lo) * w,
-                      y: region.minY + CGFloat(y.lo) * h,
-                      width: CGFloat(x.hi - x.lo) * w,
-                      height: CGFloat(y.hi - y.lo) * h)
     }
 
     // MARK: - Private
 
     private func refresh(shiftDown: Bool) {
-        view.region = region
+        view.grid = grid
         view.level = history.count
-        view.isFinal = isFinalLevel(region)
+        view.isFinal = isFinalLevel(grid)
+        view.isMixed = isFinalLevel(grid) && !isFullyFinal(grid)
         view.rightClick = shiftDown || shiftUsed
         view.pending = pending
         view.needsDisplay = true
     }
 
     private func finish(rightClick: Bool) {
-        let point = center(of: region)
+        let point = global(grid.focus)
         cancel()
         // Let the overlay disappear and the tap callback return before clicking.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
@@ -208,12 +231,12 @@ final class OverlayController {
         Mouse.move(to: point)
     }
 
-    /// Centre of a view-space rect, converted to global CG (top-left) coordinates.
-    private func center(of rect: CGRect) -> CGPoint {
+    /// A view-space point, converted to global CG (top-left) coordinates.
+    private func global(_ p: CGPoint) -> CGPoint {
         guard let screen, let primary = NSScreen.screens.first else { return .zero }
         let f = screen.frame
         let topInGlobal = primary.frame.height - f.maxY
-        return CGPoint(x: f.minX + rect.midX, y: topInGlobal + rect.midY)
+        return CGPoint(x: f.minX + p.x, y: topInGlobal + p.y)
     }
 
     private func makeWindow() -> NSWindow {
@@ -263,15 +286,19 @@ enum Mouse {
 
 /// Draws the keyboard-shaped grid over the current region.
 final class GridView: NSView {
-    var region: CGRect = .zero
+    var grid = Grid(rect: .zero)
     var level = 0
     var isFinal = false
+    /// Final level, but the grid's coarse cells still zoom.
+    var isMixed = false
     var rightClick = false
     var pending: (row: Int, col: Int)?
 
     override var isFlipped: Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
+        let region = grid.rect
+
         // Dim everything outside the active region.
         let outside = NSBezierPath(rect: bounds)
         outside.appendRect(region)
@@ -282,31 +309,24 @@ final class GridView: NSView {
         NSColor.black.withAlphaComponent(0.18).setFill()
         region.fill()
 
-        let cols = KeyLayout.columnCount, rows = KeyLayout.rowCount
-        let cw = region.width / CGFloat(cols)
-        let ch = region.height / CGFloat(rows)
-
         // Home row tint (A S D F … ;) so you can orient quickly.
         NSColor.systemBlue.withAlphaComponent(0.10).setFill()
-        CGRect(x: region.minX, y: region.minY + CGFloat(KeyLayout.homeRow) * ch,
-               width: region.width, height: ch).fill()
+        let home = grid.cell(row: KeyLayout.homeRow, col: 0)
+        CGRect(x: region.minX, y: home.minY, width: region.width, height: home.height).fill()
 
         // First key of the pair, waiting for its partner.
         if let p = pending {
             (rightClick ? NSColor.systemRed : NSColor.systemYellow).withAlphaComponent(0.35).setFill()
-            CGRect(x: region.minX + CGFloat(p.col) * cw, y: region.minY + CGFloat(p.row) * ch,
-                   width: cw, height: ch).fill()
+            grid.cell(row: p.row, col: p.col).fill()
         }
 
         // Grid lines.
         let lines = NSBezierPath()
-        for c in 1..<cols {
-            let x = region.minX + CGFloat(c) * cw
+        for x in grid.columnEdges.dropFirst().dropLast() {
             lines.move(to: CGPoint(x: x, y: region.minY))
             lines.line(to: CGPoint(x: x, y: region.maxY))
         }
-        for r in 1..<rows {
-            let y = region.minY + CGFloat(r) * ch
+        for y in grid.rowEdges.dropFirst().dropLast() {
             lines.move(to: CGPoint(x: region.minX, y: y))
             lines.line(to: CGPoint(x: region.maxX, y: y))
         }
@@ -320,16 +340,15 @@ final class GridView: NSView {
         (rightClick ? NSColor.systemRed : NSColor.systemBlue).setStroke()
         if level > 0 { border.stroke() }
 
-        // Key labels.
-        let fontSize = max(8, min(42, min(cw, ch) * 0.4))
-        let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .semibold)
-        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
+        // Key labels, sized per cell so a leaning grid's small end still fits.
         let pill = (rightClick ? NSColor.systemRed : NSColor.black).withAlphaComponent(0.6)
 
         for (r, row) in KeyLayout.rows.enumerated() {
             for (c, key) in row.enumerated() {
-                let cell = CGRect(x: region.minX + CGFloat(c) * cw,
-                                  y: region.minY + CGFloat(r) * ch, width: cw, height: ch)
+                let cell = grid.cell(row: r, col: c)
+                let fontSize = max(8, min(42, min(cell.width, cell.height) * 0.4))
+                let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .semibold)
+                let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
                 let text = NSAttributedString(string: key.label, attributes: attrs)
                 let size = text.size()
                 let pad = max(2, fontSize * 0.25)
@@ -348,7 +367,8 @@ final class GridView: NSView {
 
     private func drawHint() {
         let mode = rightClick ? "RIGHT CLICK" : "left click"
-        let stage = isFinal ? "next pair clicks" : "next pair zooms"
+        let stage = !isFinal ? "next pair zooms"
+            : isMixed ? "next pair clicks (large cells zoom)" : "next pair clicks"
         let s = "Level \(level + 1) · \(stage) · \(mode) · 2 keys = between them (same key twice = that key) · ⇧ right-click · space click here · ⌫ back · esc cancel"
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
