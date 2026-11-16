@@ -22,6 +22,10 @@ Each level takes **two key presses**:
 The grid then redraws inside the selected box. On the last level (2 by default), the
 second press **clicks** — at the midpoint between the two keys.
 
+If you select a wide box (e.g. `A` + `L`), its grid cells would be much bigger than
+normal, so an extra level is added automatically to keep the click precise. The hint
+bar shows whether the next pair *zooms* or *clicks*.
+
 | Key | Action |
 |---|---|
 | tap `⌘` | show / hide the grid |
@@ -60,7 +64,7 @@ CODESIGN_ID="<certificate name>" ./build.sh run
 ## Settings
 
 ```sh
-defaults write local.keypoint levels -int 2   # levels before the click (default 2)
+defaults write local.keypoint levels -int 2   # levels for a normal click (default 2)
 ```
 
 Takes effect the next time the grid opens.

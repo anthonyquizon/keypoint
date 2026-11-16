@@ -14,11 +14,29 @@ final class OverlayController {
     private var history: [CGRect] = []
     private var shiftUsed = false
 
-    /// Number of levels before the click fires. Change with:
-    ///   defaults write local.keypoint levels -int 3
+    /// Number of levels before the click fires for normal-sized selections.
+    /// Change with:  defaults write local.keypoint levels -int 3
     var maxLevels: Int {
         let v = UserDefaults.standard.integer(forKey: "levels")
         return v > 0 ? v : 2
+    }
+
+    /// How much bigger than a normal last-level cell a grid cell may be and
+    /// still count as the last level.
+    private let finalSlack: CGFloat = 1.5
+
+    /// The level showing `rect` is the last one (next pair clicks) when its grid
+    /// cells are no bigger than a normal last-level cell — screen ÷ (10ⁿ, 4ⁿ)
+    /// for n = `maxLevels`. Selecting a wide span (e.g. A + L) makes the cells
+    /// bigger than that, so another level is added to keep precision.
+    private func isFinalLevel(_ rect: CGRect) -> Bool {
+        let screen = view.bounds.size
+        let n = Double(maxLevels)
+        let baseW = screen.width / CGFloat(pow(Double(KeyLayout.columnCount), n))
+        let baseH = screen.height / CGFloat(pow(Double(KeyLayout.rowCount), n))
+        let cellW = rect.width / CGFloat(KeyLayout.columnCount)
+        let cellH = rect.height / CGFloat(KeyLayout.rowCount)
+        return cellW <= baseW * finalSlack && cellH <= baseH * finalSlack
     }
 
     func toggle() { isActive ? cancel() : show() }
@@ -120,10 +138,11 @@ final class OverlayController {
     /// centred on the line between the keys.
     private func select(from a: (row: Int, col: Int), to b: (row: Int, col: Int), shift: Bool) {
         let sub = cellRect(from: a, to: b)
+        let wasFinal = isFinalLevel(region)
         history.append(region)
         region = sub
 
-        if history.count >= maxLevels {
+        if wasFinal {
             finish(rightClick: shiftUsed)
         } else {
             moveCursor(to: center(of: region))
@@ -151,7 +170,7 @@ final class OverlayController {
     private func refresh(shiftDown: Bool) {
         view.region = region
         view.level = history.count
-        view.maxLevels = maxLevels
+        view.isFinal = isFinalLevel(region)
         view.rightClick = shiftDown || shiftUsed
         view.pending = pending
         view.needsDisplay = true
@@ -223,7 +242,7 @@ enum Mouse {
 final class GridView: NSView {
     var region: CGRect = .zero
     var level = 0
-    var maxLevels = 2
+    var isFinal = false
     var rightClick = false
     var pending: (row: Int, col: Int)?
 
@@ -306,7 +325,8 @@ final class GridView: NSView {
 
     private func drawHint() {
         let mode = rightClick ? "RIGHT CLICK" : "left click"
-        let s = "Level \(level + 1)/\(maxLevels) · \(mode) · 2 keys = between them (same key twice = that key) · ⇧ right-click · space click here · ⌫ back · esc cancel"
+        let stage = isFinal ? "next pair clicks" : "next pair zooms"
+        let s = "Level \(level + 1) · \(stage) · \(mode) · 2 keys = between them (same key twice = that key) · ⇧ right-click · space click here · ⌫ back · esc cancel"
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
             .foregroundColor: NSColor.white,
