@@ -30,6 +30,7 @@ bar shows whether the next pair *zooms* or *clicks*.
 |---|---|
 | tap `⌘` | show / hide the grid |
 | double-tap `⌘` | click where the mouse already is (hold `⇧` to right-click) |
+| triple-tap `⌘` | double-click there (selects a word) — a 4th tap makes it a triple-click |
 | hold `⇧` on any press | right-click instead of left-click |
 | `Space` / `Return` | click now at the current box (or pending key) |
 | `⌫` | undo the pending key, or go back a level |

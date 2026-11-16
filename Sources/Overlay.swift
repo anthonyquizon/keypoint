@@ -51,9 +51,25 @@ final class OverlayController {
     func clickAtMouse(right: Bool) {
         cancel()
         guard let point = CGEvent(source: nil)?.location else { return }
+        lastClick = (point, right, 1)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
             Mouse.click(at: point, right: right)
         }
+    }
+
+    /// Last click made by `clickAtMouse`, so further ⌘ taps can turn it into a
+    /// double- or triple-click.
+    private var lastClick: (point: CGPoint, right: Bool, count: Int)?
+
+    /// Click again at the last spot as the next click of a multi-click
+    /// (2 = double-click, 3 = triple-click). Returns false if there's nothing
+    /// to repeat (no previous click, it was a right-click, or already triple).
+    func repeatLastClick() -> Bool {
+        guard let last = lastClick, !last.right, last.count < 3 else { return false }
+        let count = last.count + 1
+        lastClick = (last.point, false, count)
+        Mouse.click(at: last.point, right: false, count: count)
+        return true
     }
 
     func show() {
@@ -224,7 +240,9 @@ enum Mouse {
         e?.post(tap: .cghidEventTap)
     }
 
-    static func click(at p: CGPoint, right: Bool) {
+    /// `count` is the click number within a multi-click (1 = single,
+    /// 2 = second click of a double-click, 3 = triple-click).
+    static func click(at p: CGPoint, right: Bool, count: Int = 1) {
         move(to: p)
         let (downType, upType, button): (CGEventType, CGEventType, CGMouseButton) = right
             ? (.rightMouseDown, .rightMouseUp, .right)
@@ -236,6 +254,8 @@ enum Mouse {
         // Clear modifiers so a still-held Shift doesn't turn this into a shift-click.
         down?.flags = []
         up?.flags = []
+        down?.setIntegerValueField(.mouseEventClickState, value: Int64(count))
+        up?.setIntegerValueField(.mouseEventClickState, value: Int64(count))
         down?.post(tap: .cghidEventTap)
         up?.post(tap: .cghidEventTap)
     }

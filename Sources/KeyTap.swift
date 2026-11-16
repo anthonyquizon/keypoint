@@ -16,6 +16,8 @@ final class KeyTap {
     /// Two ⌘ taps within this window = click at the current mouse position.
     private let doubleTapWindow: TimeInterval = 0.3
     private var lastTapAt: TimeInterval = 0
+    /// When the last tap-triggered click happened (for double/triple-click).
+    private var lastClickTapAt: TimeInterval = 0
 
     /// Key codes whose keyDown we swallowed; swallow the matching keyUp too.
     private var swallowed = Set<CGKeyCode>()
@@ -115,8 +117,13 @@ final class KeyTap {
             cmdDownAt = now
         } else {
             if cmdCandidate && now - cmdDownAt <= tapMaxDuration {
-                if now - lastTapAt <= doubleTapWindow && overlay.isPristine {
+                if now - lastClickTapAt <= doubleTapWindow && !overlay.isActive
+                    && overlay.repeatLastClick() {
+                    // 3rd / 4th tap: turn the click into a double / triple-click.
+                    lastClickTapAt = now
+                } else if now - lastTapAt <= doubleTapWindow && overlay.isPristine {
                     lastTapAt = 0
+                    lastClickTapAt = now
                     overlay.clickAtMouse(right: flags.contains(.maskShift))
                 } else {
                     lastTapAt = now
