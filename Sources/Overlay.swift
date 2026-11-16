@@ -29,6 +29,9 @@ final class OverlayController {
     /// cells are no bigger than a normal last-level cell — screen ÷ (10ⁿ, 4ⁿ)
     /// for n = `maxLevels`. Selecting a wide span (e.g. A + L) makes the cells
     /// bigger than that, so another level is added to keep precision.
+    ///
+    /// Size is compared by cell diagonal (≈ worst-case distance from the aimed
+    /// point), so a wide-but-short cell can still count as precise enough.
     private func isFinalLevel(_ rect: CGRect) -> Bool {
         let screen = view.bounds.size
         let n = Double(maxLevels)
@@ -36,7 +39,7 @@ final class OverlayController {
         let baseH = screen.height / CGFloat(pow(Double(KeyLayout.rowCount), n))
         let cellW = rect.width / CGFloat(KeyLayout.columnCount)
         let cellH = rect.height / CGFloat(KeyLayout.rowCount)
-        return cellW <= baseW * finalSlack && cellH <= baseH * finalSlack
+        return hypot(cellW, cellH) <= hypot(baseW, baseH) * finalSlack
     }
 
     func toggle() { isActive ? cancel() : show() }
