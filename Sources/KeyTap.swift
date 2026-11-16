@@ -13,6 +13,9 @@ final class KeyTap {
     private var cmdCandidate = false
     private var cmdDownAt: TimeInterval = 0
     private let tapMaxDuration: TimeInterval = 0.35
+    /// Two ⌘ taps within this window = click at the current mouse position.
+    private let doubleTapWindow: TimeInterval = 0.3
+    private var lastTapAt: TimeInterval = 0
 
     /// Key codes whose keyDown we swallowed; swallow the matching keyUp too.
     private var swallowed = Set<CGKeyCode>()
@@ -111,7 +114,13 @@ final class KeyTap {
             cmdDownAt = now
         } else {
             if cmdCandidate && now - cmdDownAt <= tapMaxDuration {
-                overlay.toggle()
+                if now - lastTapAt <= doubleTapWindow && overlay.isPristine {
+                    lastTapAt = 0
+                    overlay.clickAtMouse()
+                } else {
+                    lastTapAt = now
+                    overlay.toggle()
+                }
             }
             cmdCandidate = false
         }

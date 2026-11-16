@@ -23,6 +23,18 @@ final class OverlayController {
 
     func toggle() { isActive ? cancel() : show() }
 
+    /// Overlay is open but nothing has been selected yet.
+    var isPristine: Bool { isActive && history.isEmpty && pending == nil }
+
+    /// Hide the overlay and left-click wherever the cursor currently is.
+    func clickAtMouse() {
+        cancel()
+        guard let point = CGEvent(source: nil)?.location else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            Mouse.click(at: point, right: false)
+        }
+    }
+
     func show() {
         let mouse = NSEvent.mouseLocation
         guard let scr = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) })

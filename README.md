@@ -25,6 +25,7 @@ second press **clicks** — at the midpoint between the two keys.
 | Key | Action |
 |---|---|
 | tap `⌘` | show / hide the grid |
+| double-tap `⌘` | click where the mouse already is |
 | hold `⇧` on any press | right-click instead of left-click |
 | `Space` / `Return` | click now at the current box (or pending key) |
 | `⌫` | undo the pending key, or go back a level |
