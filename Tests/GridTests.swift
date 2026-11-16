@@ -44,6 +44,8 @@ struct GridTests {
         clickRuleWideSpanZooms()
         legibleLeavesBigGridsAlone()
         legibleFlattensBeforeGrowing()
+        legibleKeepsLeanOnNarrowPair()
+        legibleNarrowPairDrillStops()
         legibleGrowsAroundFocus()
         legibleStaysOnScreen()
         legibleStopsDrilling()
@@ -214,27 +216,60 @@ struct GridTests {
     static let minCell = CGSize(width: 18, height: 18)
     static let bounds = CGRect(origin: .zero, size: screen)
 
-    static func legibleLeavesBigGridsAlone() {
-        let g = after((1, 1), (1, 4), skew: 2)   // cells ≥ 46 × 78
-        check(g.legible(minCell: minCell, within: bounds) == g, "big enough → unchanged")
+    /// Last-level cell on this screen at 2 levels: 22.4 × 78.75.
+    static let base = Grid.lastLevelCell(screen: screen, levels: 2)
+
+    static func legible(_ g: Grid) -> Grid {
+        g.legible(minCell: minCell, within: bounds, lastLevelCell: base)
     }
 
-    /// 200 wide with skew 3: finest column ≈ 11pt, even would be 20pt —
-    /// flattening is enough, no growing.
+    static func legibleLeavesBigGridsAlone() {
+        let g = after((1, 1), (1, 4), skew: 2)   // cells ≥ 46 × 78
+        check(legible(g) == g, "big enough → unchanged")
+    }
+
+    /// Rows 80 tall with skew 3: finest row ≈ 11pt, even 20pt, and even is
+    /// well under a last-level row (78.75) — so flatten, no growing.
     static func legibleFlattensBeforeGrowing() {
-        let r = CGRect(x: 500, y: 500, width: 200, height: 400)
-        let g = Grid(rect: r, leanX: .high, skew: 3)
-        check(g.smallestCell.width < 18, "precondition: finest column too small")
-        let l = g.legible(minCell: minCell, within: bounds)
+        let r = CGRect(x: 500, y: 500, width: 400, height: 80)
+        let g = Grid(rect: r, leanY: .high, skew: 3)
+        check(g.smallestCell.height < 18, "precondition: finest row too small")
+        let l = legible(g)
         check(l.rect == r, "rect unchanged")
-        check(l.leanX == .none, "x lean dropped")
-        check(l.columnEdges == Grid(rect: r).columnEdges, "x now even")
+        check(l.leanY == .none, "y lean dropped")
+        check(l.rowEdges == Grid(rect: r).rowEdges, "y now even")
+    }
+
+    /// Regression: 8 9 lost its lean — the level-2 box is one cell wide, so
+    /// the finest column (≈15.5) was under the minimum and got flattened.
+    /// Now it keeps the lean and grows just enough.
+    static func legibleKeepsLeanOnNarrowPair() {
+        let g = after((0, 7), (0, 8), skew: 2)
+        check(g.smallestCell.width < 18, "precondition: finest column too small")
+        let l = legible(g)
+        check(l.leanX == .high, "8 9 keeps leaning toward 9")
+        close(l.smallestCell.width, 18, "finest column grown to the minimum")
+        close(l.rect.width, g.rect.width * 18 / g.smallestCell.width, "grown only as needed")
+        close(l.rect.midX, g.rect.midX, "centred on the selection")
+        check(!clicks(l, row: 0, col: 0), "8 9 → 1 (coarse) zooms")
+        check(clicks(l, row: 0, col: 9), "8 9 → 0 (fine) clicks")
+    }
+
+    /// Drilling from 8 9's coarse end gives a level that's flattened and
+    /// clicks everywhere — the lean doesn't make it drill forever.
+    static func legibleNarrowPairDrillStops() {
+        let l2 = legible(after((0, 7), (0, 8), skew: 2))
+        let raw = Grid(rect: l2.span(from: (0, 0), to: (0, 1)), leanX: .high, skew: 2)
+        let l3 = legible(raw)
+        check(l3.leanX == .none, "level 3 flattened")
+        check((0..<4).allSatisfy { r in (0..<10).allSatisfy { clicks(l3, row: r, col: $0) } },
+              "level 3: every cell clicks")
     }
 
     static func legibleGrowsAroundFocus() {
         let r = CGRect(x: 1000, y: 600, width: 50, height: 20)
         let g = Grid(rect: r, leanX: .high, leanY: .low, skew: 2)
-        let l = g.legible(minCell: minCell, within: bounds)
+        let l = legible(g)
         close(l.rect.width, 180, "grown to 10 × 18")
         close(l.rect.height, 72, "grown to 4 × 18")
         close(l.rect.midX, r.midX, "centred on selection (x)")
@@ -247,7 +282,7 @@ struct GridTests {
     /// Near the menu bar: grows down instead of off-screen, keeps the focus.
     static func legibleStaysOnScreen() {
         let r = CGRect(x: 2230, y: 0, width: 10, height: 6)
-        let l = Grid(rect: r).legible(minCell: minCell, within: bounds)
+        let l = legible(Grid(rect: r))
         check(l.rect.minY == 0 && l.rect.maxX == 2240, "pinned to the screen corner")
         close(l.rect.width, 180, "full width still")
         check(l.focus == CGPoint(x: r.midX, y: r.midY), "focus still on the selection")
@@ -259,7 +294,7 @@ struct GridTests {
         let l2 = after((1, 1), (1, 4), skew: 2)
         let raw = Grid(rect: l2.span(from: (2, 0), to: (2, 1)), leanX: .high, skew: 2)
         check(raw.smallestCell.width < 18, "precondition: level 3 too fine to label")
-        let l3 = raw.legible(minCell: minCell, within: bounds)
+        let l3 = legible(raw)
         check(l3.smallestCell.width >= 18 - 1e-9 && l3.smallestCell.height >= 18 - 1e-9, "level 3 labels fit")
         check((0..<4).allSatisfy { r in (0..<10).allSatisfy { clicks(l3, row: r, col: $0) } },
               "legible level 3: every cell clicks")

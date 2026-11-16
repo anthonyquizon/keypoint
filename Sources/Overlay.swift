@@ -200,7 +200,9 @@ final class OverlayController {
             finish(rightClick: shiftUsed)
         } else {
             // Too small to label every cell? Grow it (around the selection) until it isn't.
-            grid = grid.legible(minCell: minCellSize, within: view.bounds)
+            grid = grid.legible(minCell: minCellSize, within: view.bounds,
+                                lastLevelCell: Grid.lastLevelCell(screen: view.bounds.size,
+                                                                  levels: maxLevels))
             moveCursor(to: global(grid.focus))
             refresh(shiftDown: shift || shiftUsed)
         }

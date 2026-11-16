@@ -45,30 +45,42 @@ struct Grid: Equatable {
     }
 
     /// This grid, made big enough that every cell is at least `minCell` (so
-    /// every label fits). Per axis, if the finest cell is too small: first
-    /// drop that axis's lean (its fine cells were unreadable anyway); if even
-    /// cells are still too small, grow the axis around its centre to exactly
-    /// `minCell` per cell, kept inside `bounds`. `focus` stays put.
+    /// every label fits). `focus` stays put. Per axis, if the finest cell is
+    /// too small:
     ///
-    /// An adjusted axis ends up even, so it has no bail-out cells and can't
-    /// keep drilling down.
-    func legible(minCell: CGSize, within bounds: CGRect) -> Grid {
+    /// - Leaning, and not much finer than a last-level cell (`lastLevelCell`)
+    ///   — e.g. the last level after a narrow pair like 8 9: keep the lean and
+    ///   grow the axis around its centre just enough for the finest cell.
+    ///   That's where the lean matters most.
+    /// - Otherwise (already well past last-level precision, e.g. the extra
+    ///   level after drilling down): drop the lean; if even cells are still
+    ///   too small, grow to exactly `minCell` per cell. An even axis has no
+    ///   bail-out cells, so it can't keep drilling down.
+    ///
+    /// Growth stays inside `bounds`; if a leaning axis can't fit, it's flattened.
+    func legible(minCell: CGSize, within bounds: CGRect, lastLevelCell: CGSize) -> Grid {
         func fit(lo: CGFloat, len: CGFloat, count: Int, smallest: CGFloat, lean: Lean, min: CGFloat,
-                 boundsLo: CGFloat, boundsLen: CGFloat) -> (lo: CGFloat, len: CGFloat, lean: Lean) {
+                 base: CGFloat, boundsLo: CGFloat, boundsLen: CGFloat) -> (lo: CGFloat, len: CGFloat, lean: Lean) {
             guard smallest < min - 1e-9 else { return (lo, len, lean) }
+            let centre = lo + len / 2
+            func grown(_ newLen: CGFloat) -> CGFloat {
+                Swift.max(boundsLo, Swift.min(centre - newLen / 2, boundsLo + boundsLen - newLen))
+            }
             let even = len / CGFloat(count)
+            if lean != .none, even >= base * Grid.keepLeanAbove {
+                let newLen = len * min / smallest   // edges scale with length
+                if newLen <= boundsLen { return (grown(newLen), newLen, lean) }
+            }
             guard even < min else { return (lo, len, .none) }
             let newLen = Swift.min(min * CGFloat(count), boundsLen)
-            let centre = lo + len / 2
-            let newLo = Swift.max(boundsLo, Swift.min(centre - newLen / 2, boundsLo + boundsLen - newLen))
-            return (newLo, newLen, .none)
+            return (grown(newLen), newLen, .none)
         }
         let small = smallestCell
         let x = fit(lo: rect.minX, len: rect.width, count: KeyLayout.columnCount,
-                    smallest: small.width, lean: leanX, min: minCell.width,
+                    smallest: small.width, lean: leanX, min: minCell.width, base: lastLevelCell.width,
                     boundsLo: bounds.minX, boundsLen: bounds.width)
         let y = fit(lo: rect.minY, len: rect.height, count: KeyLayout.rowCount,
-                    smallest: small.height, lean: leanY, min: minCell.height,
+                    smallest: small.height, lean: leanY, min: minCell.height, base: lastLevelCell.height,
                     boundsLo: bounds.minY, boundsLen: bounds.height)
         var g = Grid(rect: CGRect(x: x.lo, y: y.lo, width: x.len, height: y.len),
                      leanX: x.lean, leanY: y.lean, skew: skew)
@@ -103,9 +115,8 @@ struct Grid: Equatable {
     ///     leaning cell may be (so cells ≈ even width don't flip-flop).
     func isClickable(_ cell: CGSize, screen: CGSize, levels: Int, slack: CGFloat,
                      evenTolerance: CGFloat = 1.05) -> Bool {
-        let n = Double(levels)
-        let baseW = screen.width / CGFloat(pow(Double(KeyLayout.columnCount), n))
-        let baseH = screen.height / CGFloat(pow(Double(KeyLayout.rowCount), n))
+        let base = Grid.lastLevelCell(screen: screen, levels: levels)
+        let baseW = base.width, baseH = base.height
         guard hypot(cell.width, cell.height) <= hypot(baseW, baseH) * slack else { return false }
 
         let evenW = rect.width / CGFloat(KeyLayout.columnCount)
@@ -116,6 +127,18 @@ struct Grid: Equatable {
         let tallBailOut = cell.height > evenH * evenTolerance && cell.height > baseH
         return !wideBailOut && !tallBailOut
     }
+
+    /// A normal last-level cell: screen ÷ (10ⁿ, 4ⁿ) for n = `levels`.
+    static func lastLevelCell(screen: CGSize, levels: Int) -> CGSize {
+        let n = Double(levels)
+        return CGSize(width: screen.width / CGFloat(pow(Double(KeyLayout.columnCount), n)),
+                      height: screen.height / CGFloat(pow(Double(KeyLayout.rowCount), n)))
+    }
+
+    /// `legible` keeps a lean only while even cells are at least this fraction
+    /// of a last-level cell. The last level sits near 1×, the level after a
+    /// drill-down near ¼× or less, so the cut-off is far from both.
+    static let keepLeanAbove: CGFloat = 0.5
 
     private static func gaps(_ e: [CGFloat]) -> [CGFloat] { zip(e, e.dropFirst()).map { $1 - $0 } }
 

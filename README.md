@@ -26,6 +26,16 @@ If you select a wide box (e.g. `A` + `L`), its grid cells would be much bigger t
 normal, so an extra level is added automatically to keep the click precise. The hint
 bar shows whether the next pair *zooms* or *clicks*.
 
+If a selection is so small its cells couldn't fit their labels, the grid grows around it
+(to an 18pt minimum cell) and the cursor stays on what you selected.
+
+### Leaning toward the second key (optional)
+
+With `skew` turned on (see [Settings](#settings)), the order of a pair matters: `A` then
+`L` makes the next grid's cells shrink toward `L`, so you get the most precision where you
+said the target is. The bigger cells at the other end are still there as a bail-out — on
+the last level, a pair in a visibly bigger cell zooms one more level instead of clicking.
+
 | Key | Action |
 |---|---|
 | tap `⌘` | show / hide the grid |
@@ -55,17 +65,31 @@ Accessibility. The menu bar icon shows *"Active — tap ⌘ to show grid"* once 
 
 Ad-hoc signed builds lose the Accessibility grant every rebuild (`build.sh` resets it so
 you get a fresh prompt). To avoid this, create a self-signed certificate once in
-Keychain Access (Certificate Assistant → Create a Certificate → type **Code Signing**),
-then build with:
+Keychain Access (Certificate Assistant → Create a Certificate → type **Code Signing**)
+named **Keypoint Dev** — `build.sh` uses it automatically when it's in your keychain.
+
+To sign with a different certificate, or force ad-hoc signing:
 
 ```sh
 CODESIGN_ID="<certificate name>" ./build.sh run
+CODESIGN_ID=- ./build.sh run
 ```
+
+### Tests
+
+```sh
+./build.sh test
+```
+
+Runs the grid maths tests in `Tests/` (plain assertions compiled with `swiftc`; no Xcode
+project needed).
 
 ## Settings
 
 ```sh
 defaults write local.keypoint levels -int 2   # levels for a normal click (default 2)
+defaults write local.keypoint skew -float 3   # lean toward the 2nd key: largest ÷ smallest cell (default off)
+defaults delete local.keypoint skew           # turn leaning off again
 ```
 
 Takes effect the next time the grid opens.
@@ -74,9 +98,11 @@ Takes effect the next time the grid opens.
 
 - `Sources/KeyLayout.swift` — grid keys and key codes
 - `Sources/KeyTap.swift` — global key hook (⌘-tap detection, swallowing keys while active)
+- `Sources/Grid.swift` — grid maths: cell edges, leaning, click-vs-zoom, minimum cell size
 - `Sources/Overlay.swift` — selection logic, clicking, drawing the grid
 - `Sources/main.swift` — menu bar item and permission handling
-- `build.sh` — compiles and signs `build/Keypoint.app`
+- `Tests/GridTests.swift` — tests for `Grid` (`./build.sh test`)
+- `build.sh` — compiles and signs `build/Keypoint.app`, or runs the tests
 
 ## License
 
