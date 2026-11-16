@@ -157,12 +157,7 @@ final class OverlayController {
         case KeyLayout.space, KeyLayout.returnKey:
             // Click right now at the centre of the current region.
             // (If one key of a pair is pending, click that key's cell.)
-            if let p = pending {
-                clearPending()
-                history.append(grid)
-                grid = Grid(rect: grid.span(from: p, to: p))
-            }
-            finish(rightClick: shiftUsed)
+            clickNow()
         default:
             guard let pos = KeyLayout.position(of: code) else {
                 NSSound.beep()
@@ -178,6 +173,27 @@ final class OverlayController {
                 refresh(shiftDown: shift)
             }
         }
+    }
+
+    /// A key is waiting for its partner.
+    var hasPending: Bool { isActive && pending != nil }
+
+    /// Tap ⌘ after one key (e.g. E then ⌘): click the centre of that key's
+    /// cell, like E E. Shift held (now or earlier) → right-click.
+    func clickPending(right: Bool) {
+        guard hasPending else { return }
+        if right { shiftUsed = true }
+        clickNow()
+    }
+
+    /// Click at the centre of the pending key's cell, or of the current region.
+    private func clickNow() {
+        if let p = pending {
+            clearPending()
+            history.append(grid)
+            grid = Grid(rect: grid.span(from: p, to: p))
+        }
+        finish(rightClick: shiftUsed)
     }
 
     private func clearPending() {
@@ -371,7 +387,7 @@ final class GridView: NSView {
         let mode = rightClick ? "RIGHT CLICK" : "left click"
         let stage = !isFinal ? "next pair zooms"
             : isMixed ? "next pair clicks (large cells zoom)" : "next pair clicks"
-        let s = "Level \(level + 1) · \(stage) · \(mode) · 2 keys = between them (same key twice = that key) · ⇧ right-click · space click here · ⌫ back · esc cancel"
+        let s = "Level \(level + 1) · \(stage) · \(mode) · 2 keys = between them (same key twice or key + ⌘ = that key) · ⇧ right-click · space click here · ⌫ back · esc cancel"
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
             .foregroundColor: NSColor.white,

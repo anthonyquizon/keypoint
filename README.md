@@ -42,6 +42,7 @@ the last level, a pair in a visibly bigger cell zooms one more level instead of 
 | double-tap `⌘` | click where the mouse already is (hold `⇧` to right-click) |
 | triple-tap `⌘` | double-click there (selects a word) — a 4th tap makes it a triple-click |
 | hold `⇧` on any press | right-click instead of left-click |
+| a key, then tap `⌘` | click the centre of that key's cell (e.g. `E` `⌘` instead of `E` `E`) |
 | `Space` / `Return` | click now at the current box (or pending key) |
 | `⌫` | undo the pending key, or go back a level |
 | `Esc` | cancel |
