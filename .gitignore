@@ -1,2 +1,34 @@
+# Build output
 build/
+.build/
+DerivedData/
+*.o
+*.dSYM/
+
+# Code signing material — never commit
+*.p12
+*.pfx
+*.cer
+*.crt
+*.pem
+*.key
+*.keychain
+*.keychain-db
+*.mobileprovision
+*.provisionprofile
+
+# Secrets / local config
+.env
+.env.*
+*.local
+
+# Editors / tools
+.swiftpm/
+xcuserdata/
+*.xcuserstate
+.vscode/
+.idea/
+*.swp
+
+# macOS
 .DS_Store
