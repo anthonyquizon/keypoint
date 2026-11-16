@@ -109,14 +109,15 @@ final class KeyTap {
 
         let now = ProcessInfo.processInfo.systemUptime
         if flags.contains(.maskCommand) {
-            let others: CGEventFlags = [.maskShift, .maskControl, .maskAlternate, .maskSecondaryFn]
+            // Shift is allowed (⇧ + double-tap ⌘ = right-click); other modifiers aren't.
+            let others: CGEventFlags = [.maskControl, .maskAlternate, .maskSecondaryFn]
             cmdCandidate = flags.intersection(others).isEmpty
             cmdDownAt = now
         } else {
             if cmdCandidate && now - cmdDownAt <= tapMaxDuration {
                 if now - lastTapAt <= doubleTapWindow && overlay.isPristine {
                     lastTapAt = 0
-                    overlay.clickAtMouse()
+                    overlay.clickAtMouse(right: flags.contains(.maskShift))
                 } else {
                     lastTapAt = now
                     overlay.toggle()

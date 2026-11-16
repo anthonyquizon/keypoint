@@ -26,12 +26,12 @@ final class OverlayController {
     /// Overlay is open but nothing has been selected yet.
     var isPristine: Bool { isActive && history.isEmpty && pending == nil }
 
-    /// Hide the overlay and left-click wherever the cursor currently is.
-    func clickAtMouse() {
+    /// Hide the overlay and click wherever the cursor currently is.
+    func clickAtMouse(right: Bool) {
         cancel()
         guard let point = CGEvent(source: nil)?.location else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            Mouse.click(at: point, right: false)
+            Mouse.click(at: point, right: right)
         }
     }
 
@@ -48,7 +48,7 @@ final class OverlayController {
         region = view.bounds
         history = []
         shiftUsed = false
-        refresh(shiftDown: false)
+        refresh(shiftDown: NSEvent.modifierFlags.contains(.shift))
 
         win.orderFrontRegardless()
         isActive = true
