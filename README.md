@@ -29,13 +29,6 @@ bar shows whether the next pair *zooms* or *clicks*.
 If a selection is so small its cells couldn't fit their labels, the grid grows around it
 (to an 18pt minimum cell) and the cursor stays on what you selected.
 
-### Leaning toward the second key (optional)
-
-With `skew` turned on (see [Settings](#settings)), the order of a pair matters: `A` then
-`L` makes the next grid's cells shrink toward `L`, so you get the most precision where you
-said the target is. The bigger cells at the other end are still there as a bail-out — on
-the last level, a pair in a visibly bigger cell zooms one more level instead of clicking.
-
 | Key | Action |
 |---|---|
 | tap `⌘` | show / hide the grid |
@@ -43,6 +36,7 @@ the last level, a pair in a visibly bigger cell zooms one more level instead of 
 | triple-tap `⌘` | double-click there (selects a word) — a 4th tap makes it a triple-click |
 | hold `⇧` on any press | right-click instead of left-click |
 | a key, then tap `⌘` | click the centre of that key's cell (e.g. `E` `⌘` instead of `E` `E`) |
+| a key, then an arrow | that half of the key's cell (e.g. `E` `↑` = top half of `E`): clicks its centre on the last level, zooms into it before that |
 | `Space` / `Return` | click now at the current box (or pending key) |
 | `⌫` | undo the pending key, or go back a level |
 | `Esc` | cancel |
@@ -89,8 +83,6 @@ project needed).
 
 ```sh
 defaults write local.keypoint levels -int 2   # levels for a normal click (default 2)
-defaults write local.keypoint skew -float 3   # lean toward the 2nd key: largest ÷ smallest cell (default off)
-defaults delete local.keypoint skew           # turn leaning off again
 ```
 
 Takes effect the next time the grid opens.
@@ -99,7 +91,7 @@ Takes effect the next time the grid opens.
 
 - `Sources/KeyLayout.swift` — grid keys and key codes
 - `Sources/KeyTap.swift` — global key hook (⌘-tap detection, swallowing keys while active)
-- `Sources/Grid.swift` — grid maths: cell edges, leaning, click-vs-zoom, minimum cell size
+- `Sources/Grid.swift` — grid maths: cells, click-vs-zoom, minimum cell size, arrow halves
 - `Sources/Overlay.swift` — selection logic, clicking, drawing the grid
 - `Sources/main.swift` — menu bar item and permission handling
 - `Tests/GridTests.swift` — tests for `Grid` (`./build.sh test`)

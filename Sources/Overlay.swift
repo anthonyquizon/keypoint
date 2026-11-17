@@ -22,14 +22,6 @@ final class OverlayController {
         return v > 0 ? v : 2
     }
 
-    /// Lean the next grid toward the second key of a pair (A then B → small
-    /// cells near B): ratio of largest to smallest cell. Off (1) by default.
-    /// Try:  defaults write local.keypoint skew -float 3
-    var skew: CGFloat {
-        let v = UserDefaults.standard.double(forKey: "skew")
-        return v > 1 ? CGFloat(v) : 1
-    }
-
     /// How much bigger than a normal last-level cell a grid cell may be and
     /// still count as the last level.
     private let finalSlack: CGFloat = 1.5
@@ -38,40 +30,9 @@ final class OverlayController {
     /// with its pill). Grids that would be finer grow to this instead.
     private let minCellSize = CGSize(width: 18, height: 18)
 
-    /// A cell is fine enough to click in when it's no bigger than a normal
-    /// last-level cell — screen ÷ (10ⁿ, 4ⁿ) for n = `maxLevels`, with
-    /// `finalSlack` tolerance. Selecting a wide span (e.g. A + L), or a big
-    /// cell at the coarse end of a leaning grid, fails this, so that pair
-    /// zooms one more level instead of clicking.
-    ///
-    /// Size is compared by cell diagonal (≈ worst-case distance from the aimed
-    /// point), so a wide-but-short cell can still count as precise enough.
-    ///
-    /// On a leaning grid the diagonal alone is too forgiving: last-level cells
-    /// are tall and narrow, so a visibly wide bail-out cell can still pass. So
-    /// a cell also zooms when it's clearly bigger than an even cell of this
-    /// grid on some axis (`evenTolerance`) *and* bigger than a normal
-    /// last-level cell on that axis — the second part stops the extra level
-    /// (and anything deeper) from drilling down again.
-    private func isClickable(_ cell: CGSize, in grid: Grid) -> Bool {
-        grid.isClickable(cell, screen: view.bounds.size, levels: maxLevels, slack: finalSlack)
-    }
-
-    /// Some pair on this grid would click (its finest cells are small enough).
+    /// The next pair on this grid clicks rather than zooming (see `Grid.isFinal`).
     private func isFinalLevel(_ grid: Grid) -> Bool {
-        isClickable(grid.smallestCell, in: grid)
-    }
-
-    /// Every pair on this grid would click (its coarsest cells are small enough).
-    private func isFullyFinal(_ grid: Grid) -> Bool {
-        isClickable(grid.largestCell, in: grid)
-    }
-
-    /// A pair clicks only if both keys' cells are fine enough; otherwise it
-    /// drills down another level.
-    private func pairClicks(_ a: (row: Int, col: Int), _ b: (row: Int, col: Int)) -> Bool {
-        isClickable(grid.cell(row: a.row, col: a.col).size, in: grid)
-            && isClickable(grid.cell(row: b.row, col: b.col).size, in: grid)
+        grid.isFinal(screen: view.bounds.size, levels: maxLevels, slack: finalSlack)
     }
 
     func toggle() { isActive ? cancel() : show() }
@@ -158,6 +119,16 @@ final class OverlayController {
             // Click right now at the centre of the current region.
             // (If one key of a pair is pending, click that key's cell.)
             clickNow()
+        case _ where KeyLayout.arrows[code] != nil:
+            // A key then an arrow: that half of the key's cell (E ↑ = top of E).
+            guard let p = pending, let dir = KeyLayout.arrows[code] else {
+                NSSound.beep()
+                return
+            }
+            clearPending()
+            let clicks = isFinalLevel(grid)
+            let half = Grid.half(of: grid.cell(row: p.row, col: p.col), toward: dir)
+            enter(Grid(rect: half), clicks: clicks, shift: shift)
         default:
             guard let pos = KeyLayout.position(of: code) else {
                 NSSound.beep()
@@ -202,23 +173,21 @@ final class OverlayController {
 
     /// Zoom into the box spanning the centres of two keys (the same key twice =
     /// that key's cell). Any axis thinner than one cell is padded to one cell,
-    /// centred on the line between the keys. Order matters when `skew` is on:
-    /// the next grid leans toward `b`.
+    /// centred on the line between the keys.
     private func select(from a: (row: Int, col: Int), to b: (row: Int, col: Int), shift: Bool) {
-        let wasFinal = pairClicks(a, b)
-        history.append(grid)
-        grid = Grid(rect: grid.span(from: a, to: b),
-                    leanX: .toward(b.col, from: a.col),
-                    leanY: .toward(b.row, from: a.row),
-                    skew: skew)
+        enter(Grid(rect: grid.span(from: a, to: b)), clicks: isFinalLevel(grid), shift: shift)
+    }
 
-        if wasFinal {
+    /// Move to `next`: click at its focus if `clicks`, otherwise zoom into it.
+    private func enter(_ next: Grid, clicks: Bool, shift: Bool) {
+        history.append(grid)
+        grid = next
+
+        if clicks {
             finish(rightClick: shiftUsed)
         } else {
             // Too small to label every cell? Grow it (around the selection) until it isn't.
-            grid = grid.legible(minCell: minCellSize, within: view.bounds,
-                                lastLevelCell: Grid.lastLevelCell(screen: view.bounds.size,
-                                                                  levels: maxLevels))
+            grid = grid.legible(minCell: minCellSize, within: view.bounds)
             moveCursor(to: global(grid.focus))
             refresh(shiftDown: shift || shiftUsed)
         }
@@ -230,7 +199,6 @@ final class OverlayController {
         view.grid = grid
         view.level = history.count
         view.isFinal = isFinalLevel(grid)
-        view.isMixed = isFinalLevel(grid) && !isFullyFinal(grid)
         view.rightClick = shiftDown || shiftUsed
         view.pending = pending
         view.needsDisplay = true
@@ -307,8 +275,6 @@ final class GridView: NSView {
     var grid = Grid(rect: .zero)
     var level = 0
     var isFinal = false
-    /// Final level, but the grid's coarse cells still zoom.
-    var isMixed = false
     var rightClick = false
     var pending: (row: Int, col: Int)?
 
@@ -358,7 +324,7 @@ final class GridView: NSView {
         (rightClick ? NSColor.systemRed : NSColor.systemBlue).setStroke()
         if level > 0 { border.stroke() }
 
-        // Key labels, sized per cell so a leaning grid's small end still fits.
+        // Key labels.
         let pill = (rightClick ? NSColor.systemRed : NSColor.black).withAlphaComponent(0.6)
 
         for (r, row) in KeyLayout.rows.enumerated() {
@@ -385,9 +351,8 @@ final class GridView: NSView {
 
     private func drawHint() {
         let mode = rightClick ? "RIGHT CLICK" : "left click"
-        let stage = !isFinal ? "next pair zooms"
-            : isMixed ? "next pair clicks (large cells zoom)" : "next pair clicks"
-        let s = "Level \(level + 1) · \(stage) · \(mode) · 2 keys = between them (same key twice or key + ⌘ = that key) · ⇧ right-click · space click here · ⌫ back · esc cancel"
+        let stage = isFinal ? "next pair clicks" : "next pair zooms"
+        let s = "Level \(level + 1) · \(stage) · \(mode) · 2 keys = between them (same key twice or key + ⌘ = that key; key + arrow = that half) · ⇧ right-click · space click here · ⌫ back · esc cancel"
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
             .foregroundColor: NSColor.white,

@@ -50,4 +50,9 @@ enum KeyLayout {
     static let returnKey: CGKeyCode = 36
     static let leftCommand: CGKeyCode = 55
     static let rightCommand: CGKeyCode = 54
+
+    /// Arrow keys → direction (a key then an arrow picks that half of its cell).
+    static let arrows: [CGKeyCode: Grid.Direction] = [
+        126: .up, 125: .down, 123: .left, 124: .right,
+    ]
 }
