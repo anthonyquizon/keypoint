@@ -52,6 +52,16 @@ Requires macOS 13+ and the Xcode command-line tools.
 On first launch, grant **Accessibility** access in System Settings → Privacy & Security →
 Accessibility. The menu bar icon shows *"Active — tap ⌘ to show grid"* once it's ready.
 
+### Open at login
+
+```sh
+./build.sh install
+```
+
+This builds the app, copies it to `~/Applications/Keypoint.app` and opens it from there.
+Then pick **Open at Login** in the menu bar menu. Install it first: `build/` is wiped on
+every rebuild, so a login item pointing there would break.
+
 ### Keeping the permission across rebuilds
 
 Ad-hoc signed builds lose the Accessibility grant every rebuild (`build.sh` resets it so

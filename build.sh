@@ -1,5 +1,6 @@
 #!/bin/bash
-# Builds build/Keypoint.app. Usage: ./build.sh [run | test]
+# Builds build/Keypoint.app. Usage: ./build.sh [run | install | test]
+#   install — also copies it to ~/Applications and opens it from there
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -38,3 +39,11 @@ fi
 
 echo "Built $APP"
 if [ "${1:-}" = "run" ]; then open "$APP"; fi
+if [ "${1:-}" = "install" ]; then
+  DEST="$HOME/Applications/Keypoint.app"
+  mkdir -p "$HOME/Applications"
+  rm -rf "$DEST"
+  ditto "$APP" "$DEST"
+  echo "Installed $DEST"
+  open "$DEST"
+fi
