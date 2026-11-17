@@ -26,12 +26,9 @@ struct GridTests {
     static func main() {
         evenGrid()
         offsetRect()
-        spanSameKeyIsCell()
-        spanUsesCentres()
-        spanMatchesOldFormula()
-        normalPathIsTwoLevels()
-        wideSpanAddsOneLevel()
-        moreLevelsSetting()
+        selectionIsCell()
+        selectionWithArrowIsHalf()
+        twoKeysReachLastLevelCell()
         legibleLeavesBigGridsAlone()
         legibleGrowsAroundFocus()
         legibleStaysOnScreen()
@@ -41,7 +38,7 @@ struct GridTests {
         if failures > 0 { exit(1) }
     }
 
-    // MARK: - Cells and spans
+    // MARK: - Cells and selections
 
     static func evenGrid() {
         let g = Grid(rect: rect)
@@ -57,41 +54,19 @@ struct GridTests {
         check(g.rowEdges.first == 50 && g.rowEdges.last == 130, "row edges offset")
     }
 
-    static func spanSameKeyIsCell() {
+    static func selectionIsCell() {
         let g = Grid(rect: rect)
         for (r, c) in [(0, 0), (2, 5), (3, 9)] {
-            check(g.span(from: (r, c), to: (r, c)) == g.cell(row: r, col: c), "same key \(r),\(c) = its cell")
+            check(g.selection(row: r, col: c) == g.cell(row: r, col: c), "key \(r),\(c) = its cell")
         }
     }
 
-    static func spanUsesCentres() {
+    static func selectionWithArrowIsHalf() {
         let g = Grid(rect: rect)
-        check(g.span(from: (1, 0), to: (1, 9)) == CGRect(x: 50, y: 100, width: 900, height: 100),
-              "Q P spans Q's centre to P's, Q-row tall")
-        check(g.span(from: (1, 9), to: (1, 0)) == g.span(from: (1, 0), to: (1, 9)), "order doesn't matter")
-    }
-
-    /// Every key pair must select the same box as the original formula: span
-    /// between cell centres, any axis thinner than a cell padded to one cell.
-    static func spanMatchesOldFormula() {
-        let g = Grid(rect: rect)
-        let cw = rect.width / 10, ch = rect.height / 4
-        func old(_ p: Int, _ q: Int) -> (CGFloat, CGFloat) {
-            var lo = CGFloat(min(p, q)) + 0.5, hi = CGFloat(max(p, q)) + 0.5
-            if hi - lo < 1 { let mid = (lo + hi) / 2; lo = mid - 0.5; hi = mid + 0.5 }
-            return (lo, hi)
+        let e = g.cell(row: 1, col: 2)
+        for d: Grid.Direction in [.up, .down, .left, .right] {
+            check(g.selection(row: 1, col: 2, half: d) == Grid.half(of: e, toward: d), "\(d) E = that half of E")
         }
-        var mismatches = 0
-        for r1 in 0..<4 { for c1 in 0..<10 { for r2 in 0..<4 { for c2 in 0..<10 {
-            let (x0, x1) = old(c1, c2), (y0, y1) = old(r1, r2)
-            let want = CGRect(x: x0 * cw, y: y0 * ch, width: (x1 - x0) * cw, height: (y1 - y0) * ch)
-            let got = g.span(from: (r1, c1), to: (r2, c2))
-            if abs(got.minX - want.minX) > 1e-9 || abs(got.maxX - want.maxX) > 1e-9
-                || abs(got.minY - want.minY) > 1e-9 || abs(got.maxY - want.maxY) > 1e-9 {
-                mismatches += 1
-            }
-        }}}}
-        check(mismatches == 0, "span matches old formula for all 1600 pairs (\(mismatches) differ)")
     }
 
     // MARK: - Levels
@@ -99,66 +74,22 @@ struct GridTests {
     static let minCell = CGSize(width: 18, height: 18)
 
     static let screens: [CGSize] = [
-        CGSize(width: 1280, height: 800), CGSize(width: 1440, height: 900),
-        CGSize(width: 1512, height: 982), CGSize(width: 1728, height: 1117),
-        CGSize(width: 1920, height: 1080), CGSize(width: 2240, height: 1260),
-        CGSize(width: 2560, height: 1440), CGSize(width: 3440, height: 1440),
-        CGSize(width: 3840, height: 2160), CGSize(width: 6016, height: 3384),
+        CGSize(width: 1280, height: 800), CGSize(width: 1920, height: 1080),
+        CGSize(width: 2240, height: 1260), CGSize(width: 3840, height: 2160),
         CGSize(width: 1080, height: 1920),   // portrait
     ]
 
-    /// Zoom like the overlay does: the box between two keys, made legible.
-    static func zoom(_ g: Grid, _ a: (Int, Int), _ b: (Int, Int), screen: CGSize) -> Grid {
-        Grid(rect: g.span(from: a, to: b)).legible(minCell: minCell, within: CGRect(origin: .zero, size: screen))
-    }
-
-    static func isFinal(_ g: Grid, _ screen: CGSize, levels: Int = 2) -> Bool {
-        g.isFinal(screen: screen, levels: levels, slack: 1.5)
-    }
-
-    /// The normal path — a key twice or two neighbouring keys, then any pair
-    /// (A A → A B) — is exactly two levels on every screen: level 1 zooms,
-    /// level 2 clicks.
-    static func normalPathIsTwoLevels() {
-        let firstPairs: [((Int, Int), (Int, Int))] = [
-            ((2, 0), (2, 0)),   // A A
-            ((2, 3), (2, 3)),   // F F
-            ((0, 9), (0, 9)),   // 0 0 (corner)
-            ((2, 0), (2, 1)),   // A S
-            ((1, 4), (2, 4)),   // T G
-            ((2, 3), (1, 4)),   // F T (diagonal neighbours)
-        ]
+    /// Two keys (F then J) land on a screen ÷ (100, 16) cell, and the click
+    /// point is its centre. (Before `legible` grows small grids.)
+    static func twoKeysReachLastLevelCell() {
         for screen in screens {
             let top = Grid(rect: CGRect(origin: .zero, size: screen))
-            check(!isFinal(top, screen), "\(screen): level 1 zooms")
-            for (a, b) in firstPairs {
-                let l2 = zoom(top, a, b, screen: screen)
-                check(isFinal(l2, screen), "\(screen): \(a)→\(b) then any pair clicks on level 2")
-            }
+            let l2 = Grid(rect: top.selection(row: 2, col: 3))
+            let target = Grid(rect: l2.selection(row: 2, col: 6))
+            close(target.rect.width, screen.width / 100, "\(screen): cell width")
+            close(target.rect.height, screen.height / 16, "\(screen): cell height")
+            close(target.focus.x, screen.width * (0.3 + 0.065), "\(screen): click x")
         }
-    }
-
-    /// A wide span (A L) makes level-2 cells too coarse, so one more level is
-    /// added — and that level clicks. (Landscape only: on a portrait screen
-    /// last-level cells are so tall that the diagonal check lets A L click.)
-    static func wideSpanAddsOneLevel() {
-        for screen in screens where screen.width > screen.height {
-            let top = Grid(rect: CGRect(origin: .zero, size: screen))
-            let l2 = zoom(top, (2, 0), (2, 8), screen: screen)
-            check(!isFinal(l2, screen), "\(screen): A L → level 2 zooms")
-            let l3 = zoom(l2, (2, 0), (2, 1), screen: screen)
-            check(isFinal(l3, screen), "\(screen): A L → A S → level 3 clicks")
-        }
-    }
-
-    /// `levels 3` makes the normal path three levels.
-    static func moreLevelsSetting() {
-        let screen = CGSize(width: 2240, height: 1260)
-        let top = Grid(rect: CGRect(origin: .zero, size: screen))
-        let l2 = zoom(top, (2, 0), (2, 0), screen: screen)
-        check(!isFinal(l2, screen, levels: 3), "levels 3: level 2 zooms")
-        let l3 = zoom(l2, (2, 0), (2, 0), screen: screen)
-        check(isFinal(l3, screen, levels: 3), "levels 3: level 3 clicks")
     }
 
     // MARK: - Minimum cell size
@@ -198,7 +129,7 @@ struct GridTests {
         check(Grid.half(of: c, toward: .left) == CGRect(x: 100, y: 200, width: 20, height: 80), "← = left half")
         check(Grid.half(of: c, toward: .right) == CGRect(x: 120, y: 200, width: 20, height: 80), "→ = right half")
         let up = Grid(rect: Grid.half(of: c, toward: .up))
-        check(up.focus == CGPoint(x: 120, y: 220), "E ↑ clicks a quarter of the way down E")
+        check(up.focus == CGPoint(x: 120, y: 220), "↑ E clicks a quarter of the way down E")
         check(KeyLayout.arrows[126] == .up && KeyLayout.arrows[123] == .left, "arrow key codes")
     }
 }

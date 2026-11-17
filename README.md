@@ -14,17 +14,13 @@ A S D F G H J K L ;
 Z X C V B N M , . /
 ```
 
-Each level takes **two key presses**:
+Each level takes **one key press**: press a key to zoom into its cell (e.g. `F`). The
+grid redraws inside that cell, and on the last level (2 by default) the press **clicks**
+the cell's centre. So a normal click is two keys: `F` `J`.
 
-- **Two different keys** → zoom into the box between their centres (e.g. `A` then `L`).
-- **The same key twice** → zoom into that key's cell (e.g. `F` then `F`).
-
-The grid then redraws inside the selected box. On the last level (2 by default), the
-second press **clicks** — at the midpoint between the two keys.
-
-If you select a wide box (e.g. `A` + `L`), its grid cells would be much bigger than
-normal, so an extra level is added automatically to keep the click precise. The hint
-bar shows whether the next pair *zooms* or *clicks*.
+For more precision, press an **arrow first**: the next key picks that half of its cell
+(e.g. `↑` `E` = top half of `E`). The hint bar shows whether the next key *zooms* or
+*clicks*.
 
 If a selection is so small its cells couldn't fit their labels, the grid grows around it
 (to an 18pt minimum cell) and the cursor stays on what you selected.
@@ -35,10 +31,10 @@ If a selection is so small its cells couldn't fit their labels, the grid grows a
 | double-tap `⌘` | click where the mouse already is (hold `⇧` to right-click) |
 | triple-tap `⌘` | double-click there (selects a word) — a 4th tap makes it a triple-click |
 | hold `⇧` on any press | right-click instead of left-click |
-| a key, then tap `⌘` | click the centre of that key's cell (e.g. `E` `⌘` instead of `E` `E`) |
-| a key, then an arrow | that half of the key's cell (e.g. `E` `↑` = top half of `E`): clicks its centre on the last level, zooms into it before that |
-| `Space` / `Return` | click now at the current box (or pending key) |
-| `⌫` | undo the pending key, or go back a level |
+| a key | zoom into its cell (clicks its centre on the last level) |
+| an arrow, then a key | that half of the key's cell (e.g. `↑` `E` = top half of `E`); another arrow replaces it |
+| `Space` / `Return` | click now at the centre of the current box |
+| `⌫` | undo the pending arrow, or go back a level |
 | `Esc` | cancel |
 
 Keys are matched by physical position, so the grid works the same on Dvorak, Colemak,
@@ -82,7 +78,7 @@ project needed).
 ## Settings
 
 ```sh
-defaults write local.keypoint levels -int 2   # levels for a normal click (default 2)
+defaults write local.keypoint levels -int 2   # key presses per click (default 2)
 ```
 
 Takes effect the next time the grid opens.
@@ -91,7 +87,7 @@ Takes effect the next time the grid opens.
 
 - `Sources/KeyLayout.swift` — grid keys and key codes
 - `Sources/KeyTap.swift` — global key hook (⌘-tap detection, swallowing keys while active)
-- `Sources/Grid.swift` — grid maths: cells, click-vs-zoom, minimum cell size, arrow halves
+- `Sources/Grid.swift` — grid maths: cells, minimum cell size, arrow halves
 - `Sources/Overlay.swift` — selection logic, clicking, drawing the grid
 - `Sources/main.swift` — menu bar item and permission handling
 - `Tests/GridTests.swift` — tests for `Grid` (`./build.sh test`)

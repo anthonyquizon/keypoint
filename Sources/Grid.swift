@@ -1,5 +1,4 @@
 import CoreGraphics
-import Foundation
 
 /// The keyboard-shaped grid laid over a region: 10 × 4 even cells.
 struct Grid: Equatable {
@@ -30,17 +29,12 @@ struct Grid: Equatable {
                height: rowEdges[row + 1] - rowEdges[row])
     }
 
-    /// The box spanning the centres of two keys' cells (the same key twice =
-    /// that key's cell). On an axis where both keys match, the box takes that
-    /// row's / column's full extent.
-    func span(from a: (row: Int, col: Int), to b: (row: Int, col: Int)) -> CGRect {
-        func range(_ e: [CGFloat], _ p: Int, _ q: Int) -> (lo: CGFloat, hi: CGFloat) {
-            if p == q { return (e[p], e[p + 1]) }
-            func centre(_ i: Int) -> CGFloat { (e[i] + e[i + 1]) / 2 }
-            return (centre(min(p, q)), centre(max(p, q)))
-        }
-        let x = range(columnEdges, a.col, b.col), y = range(rowEdges, a.row, b.row)
-        return CGRect(x: x.lo, y: y.lo, width: x.hi - x.lo, height: y.hi - y.lo)
+    /// What one key press selects: that key's cell, or — if an arrow was
+    /// pressed first — the half of it toward the arrow (↑ E = top half of E).
+    func selection(row: Int, col: Int, half direction: Direction? = nil) -> CGRect {
+        let c = cell(row: row, col: col)
+        guard let direction else { return c }
+        return Grid.half(of: c, toward: direction)
     }
 
     /// This grid, grown around its centre (kept inside `bounds`) so every cell
@@ -62,31 +56,11 @@ struct Grid: Equatable {
         return g
     }
 
-    /// The next pair on this grid clicks (rather than zooming another level)
-    /// when its cells are no bigger than a normal last-level cell — screen ÷
-    /// (10ⁿ, 4ⁿ) for n = `levels` — with `slack` tolerance. Selecting a wide
-    /// span (e.g. A + L) makes the cells bigger than that, so another level is
-    /// added.
-    ///
-    /// Size is compared by cell diagonal (≈ worst-case distance from the aimed
-    /// point), so a wide-but-short cell can still count as precise enough.
-    func isFinal(screen: CGSize, levels: Int, slack: CGFloat) -> Bool {
-        let base = Grid.lastLevelCell(screen: screen, levels: levels)
-        return hypot(cellSize.width, cellSize.height) <= hypot(base.width, base.height) * slack
-    }
-
-    /// A normal last-level cell: screen ÷ (10ⁿ, 4ⁿ) for n = `levels`.
-    static func lastLevelCell(screen: CGSize, levels: Int) -> CGSize {
-        let n = Double(levels)
-        return CGSize(width: screen.width / CGFloat(pow(Double(KeyLayout.columnCount), n)),
-                      height: screen.height / CGFloat(pow(Double(KeyLayout.rowCount), n)))
-    }
-
     /// An arrow key's direction.
     enum Direction: Equatable { case up, down, left, right }
 
     /// The half of `rect` toward `direction` (view space: up = smaller y).
-    /// A key then an arrow (E ↑) selects that half of the key's cell.
+    /// An arrow then a key (↑ E) selects that half of the key's cell.
     static func half(of rect: CGRect, toward direction: Direction) -> CGRect {
         let w = rect.width / 2, h = rect.height / 2
         switch direction {

@@ -15,25 +15,19 @@ final class OverlayController {
     private var history: [Grid] = []
     private var shiftUsed = false
 
-    /// Number of levels before the click fires for normal-sized selections.
+    /// Number of key presses (levels) before the click fires.
     /// Change with:  defaults write local.keypoint levels -int 3
     var maxLevels: Int {
         let v = UserDefaults.standard.integer(forKey: "levels")
         return v > 0 ? v : 2
     }
 
-    /// How much bigger than a normal last-level cell a grid cell may be and
-    /// still count as the last level.
-    private let finalSlack: CGFloat = 1.5
-
     /// Smallest grid cell (points): enough for the smallest key label (8pt
     /// with its pill). Grids that would be finer grow to this instead.
     private let minCellSize = CGSize(width: 18, height: 18)
 
-    /// The next pair on this grid clicks rather than zooming (see `Grid.isFinal`).
-    private func isFinalLevel(_ grid: Grid) -> Bool {
-        grid.isFinal(screen: view.bounds.size, levels: maxLevels, slack: finalSlack)
-    }
+    /// The next key press clicks rather than zooming.
+    private var isFinalLevel: Bool { history.count + 1 >= maxLevels }
 
     func toggle() { isActive ? cancel() : show() }
 
@@ -95,8 +89,8 @@ final class OverlayController {
         refresh(shiftDown: down)
     }
 
-    /// First key of the current pair, waiting for its partner.
-    private var pending: (row: Int, col: Int)?
+    /// An arrow pressed before a key: the next key picks that half of its cell.
+    private var pending: Grid.Direction?
 
     func handleKey(_ code: CGKeyCode, flags: CGEventFlags) {
         let shift = flags.contains(.maskShift)
@@ -117,69 +111,31 @@ final class OverlayController {
             }
         case KeyLayout.space, KeyLayout.returnKey:
             // Click right now at the centre of the current region.
-            // (If one key of a pair is pending, click that key's cell.)
-            clickNow()
-        case _ where KeyLayout.arrows[code] != nil:
-            // A key then an arrow: that half of the key's cell (E ↑ = top of E).
-            guard let p = pending, let dir = KeyLayout.arrows[code] else {
-                NSSound.beep()
-                return
-            }
             clearPending()
-            let clicks = isFinalLevel(grid)
-            let half = Grid.half(of: grid.cell(row: p.row, col: p.col), toward: dir)
-            enter(Grid(rect: half), clicks: clicks, shift: shift)
+            finish(rightClick: shiftUsed)
+        case _ where KeyLayout.arrows[code] != nil:
+            // An arrow then a key: that half of the key's cell (↑ E = top of E).
+            // Another arrow replaces it.
+            pending = KeyLayout.arrows[code]
+            refresh(shiftDown: shift)
         default:
             guard let pos = KeyLayout.position(of: code) else {
                 NSSound.beep()
                 return
             }
-            if let first = pending {
-                // Second key of the pair: zoom into the box between them
-                // (same key twice = that key's cell).
-                clearPending()
-                select(from: first, to: pos, shift: shift)
-            } else {
-                pending = pos
-                refresh(shiftDown: shift)
-            }
-        }
-    }
-
-    /// A key is waiting for its partner.
-    var hasPending: Bool { isActive && pending != nil }
-
-    /// Tap ⌘ after one key (e.g. E then ⌘): click the centre of that key's
-    /// cell, like E E. Shift held (now or earlier) → right-click.
-    func clickPending(right: Bool) {
-        guard hasPending else { return }
-        if right { shiftUsed = true }
-        clickNow()
-    }
-
-    /// Click at the centre of the pending key's cell, or of the current region.
-    private func clickNow() {
-        if let p = pending {
+            let half = pending
             clearPending()
-            history.append(grid)
-            grid = Grid(rect: grid.span(from: p, to: p))
+            enter(Grid(rect: grid.selection(row: pos.row, col: pos.col, half: half)), shift: shift)
         }
-        finish(rightClick: shiftUsed)
     }
 
     private func clearPending() {
         pending = nil
     }
 
-    /// Zoom into the box spanning the centres of two keys (the same key twice =
-    /// that key's cell). Any axis thinner than one cell is padded to one cell,
-    /// centred on the line between the keys.
-    private func select(from a: (row: Int, col: Int), to b: (row: Int, col: Int), shift: Bool) {
-        enter(Grid(rect: grid.span(from: a, to: b)), clicks: isFinalLevel(grid), shift: shift)
-    }
-
-    /// Move to `next`: click at its focus if `clicks`, otherwise zoom into it.
-    private func enter(_ next: Grid, clicks: Bool, shift: Bool) {
+    /// Move to `next`: click at its focus on the last level, otherwise zoom into it.
+    private func enter(_ next: Grid, shift: Bool) {
+        let clicks = isFinalLevel
         history.append(grid)
         grid = next
 
@@ -198,7 +154,7 @@ final class OverlayController {
     private func refresh(shiftDown: Bool) {
         view.grid = grid
         view.level = history.count
-        view.isFinal = isFinalLevel(grid)
+        view.isFinal = isFinalLevel
         view.rightClick = shiftDown || shiftUsed
         view.pending = pending
         view.needsDisplay = true
@@ -242,8 +198,23 @@ final class OverlayController {
 }
 
 enum Mouse {
+    /// Source for our synthetic events. With a nil source macOS suppresses
+    /// real pointer input (e.g. a Wacom pen) for ~0.25s after each posted
+    /// event, so the pen feels captured; this source suppresses nothing.
+    private static let source: CGEventSource? = {
+        let s = CGEventSource(stateID: .combinedSessionState)
+        s?.localEventsSuppressionInterval = 0
+        s?.setLocalEventsFilterDuringSuppressionState(
+            [.permitLocalMouseEvents, .permitLocalKeyboardEvents, .permitSystemDefinedEvents],
+            state: .eventSuppressionStateSuppressionInterval)
+        s?.setLocalEventsFilterDuringSuppressionState(
+            [.permitLocalMouseEvents, .permitLocalKeyboardEvents, .permitSystemDefinedEvents],
+            state: .eventSuppressionStateRemoteMouseDrag)
+        return s
+    }()
+
     static func move(to p: CGPoint) {
-        let e = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved,
+        let e = CGEvent(mouseEventSource: source, mouseType: .mouseMoved,
                         mouseCursorPosition: p, mouseButton: .left)
         e?.flags = []
         e?.post(tap: .cghidEventTap)
@@ -256,9 +227,9 @@ enum Mouse {
         let (downType, upType, button): (CGEventType, CGEventType, CGMouseButton) = right
             ? (.rightMouseDown, .rightMouseUp, .right)
             : (.leftMouseDown, .leftMouseUp, .left)
-        let down = CGEvent(mouseEventSource: nil, mouseType: downType,
+        let down = CGEvent(mouseEventSource: source, mouseType: downType,
                            mouseCursorPosition: p, mouseButton: button)
-        let up = CGEvent(mouseEventSource: nil, mouseType: upType,
+        let up = CGEvent(mouseEventSource: source, mouseType: upType,
                          mouseCursorPosition: p, mouseButton: button)
         // Clear modifiers so a still-held Shift doesn't turn this into a shift-click.
         down?.flags = []
@@ -276,7 +247,7 @@ final class GridView: NSView {
     var level = 0
     var isFinal = false
     var rightClick = false
-    var pending: (row: Int, col: Int)?
+    var pending: Grid.Direction?
 
     override var isFlipped: Bool { true }
 
@@ -298,10 +269,14 @@ final class GridView: NSView {
         let home = grid.cell(row: KeyLayout.homeRow, col: 0)
         CGRect(x: region.minX, y: home.minY, width: region.width, height: home.height).fill()
 
-        // First key of the pair, waiting for its partner.
-        if let p = pending {
-            (rightClick ? NSColor.systemRed : NSColor.systemYellow).withAlphaComponent(0.35).setFill()
-            grid.cell(row: p.row, col: p.col).fill()
+        // Arrow pressed, waiting for a key: shade that half of every cell.
+        if let dir = pending {
+            (rightClick ? NSColor.systemRed : NSColor.systemYellow).withAlphaComponent(0.25).setFill()
+            for r in 0..<KeyLayout.rowCount {
+                for c in 0..<KeyLayout.columnCount {
+                    grid.selection(row: r, col: c, half: dir).fill()
+                }
+            }
         }
 
         // Grid lines.
@@ -351,8 +326,16 @@ final class GridView: NSView {
 
     private func drawHint() {
         let mode = rightClick ? "RIGHT CLICK" : "left click"
-        let stage = isFinal ? "next pair clicks" : "next pair zooms"
-        let s = "Level \(level + 1) · \(stage) · \(mode) · 2 keys = between them (same key twice or key + ⌘ = that key; key + arrow = that half) · ⇧ right-click · space click here · ⌫ back · esc cancel"
+        let stage = isFinal ? "next key clicks" : "next key zooms"
+        let half = pending.map { d -> String in
+            switch d {
+            case .up: return " · ↑ top half"
+            case .down: return " · ↓ bottom half"
+            case .left: return " · ← left half"
+            case .right: return " · → right half"
+            }
+        } ?? ""
+        let s = "Level \(level + 1) · \(stage)\(half) · \(mode) · key = its cell · arrow then key = that half · ⇧ right-click · space click here · ⌫ back · esc cancel"
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
             .foregroundColor: NSColor.white,

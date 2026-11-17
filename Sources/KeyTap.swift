@@ -121,10 +121,6 @@ final class KeyTap {
                     && overlay.repeatLastClick() {
                     // 3rd / 4th tap: turn the click into a double / triple-click.
                     lastClickTapAt = now
-                } else if overlay.hasPending {
-                    // One key pressed, then ⌘: click that key's cell (E ⌘ = E E).
-                    lastTapAt = 0
-                    overlay.clickPending(right: flags.contains(.maskShift))
                 } else if now - lastTapAt <= doubleTapWindow && overlay.isPristine {
                     lastTapAt = 0
                     lastClickTapAt = now
