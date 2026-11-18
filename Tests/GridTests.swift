@@ -33,6 +33,8 @@ struct GridTests {
         legibleGrowsAroundFocus()
         legibleStaysOnScreen()
         arrowHalves()
+        inclusiveDragWidensOutward()
+        repeatedArrowHalvesAgain()
 
         print(failures == 0 ? "OK — \(checks) checks passed" : "\(failures) of \(checks) checks failed")
         if failures > 0 { exit(1) }
@@ -131,5 +133,34 @@ struct GridTests {
         let up = Grid(rect: Grid.half(of: c, toward: .up))
         check(up.focus == CGPoint(x: 120, y: 220), "↑ E clicks a quarter of the way down E")
         check(KeyLayout.arrows[126] == .up && KeyLayout.arrows[123] == .left, "arrow key codes")
+    }
+
+    static func repeatedArrowHalvesAgain() {
+        let g = Grid(rect: rect)
+        let e = g.cell(row: 1, col: 2)   // 100 × 100 at (200, 100)
+        check(g.selection(row: 1, col: 2, half: .up, depth: 1) == Grid.half(of: e, toward: .up), "depth 1 = half")
+        check(g.selection(row: 1, col: 2, half: .up, depth: 2)
+              == CGRect(x: 200, y: 100, width: 100, height: 25), "↑ ↑ E = top quarter")
+        check(g.selection(row: 1, col: 2, half: .down, depth: 2)
+              == CGRect(x: 200, y: 175, width: 100, height: 25), "↓ ↓ E = bottom quarter")
+        check(g.selection(row: 1, col: 2, half: .right, depth: 3)
+              == CGRect(x: 287.5, y: 100, width: 12.5, height: 100), "→ → → E = right eighth")
+    }
+
+    static func inclusiveDragWidensOutward() {
+        let a = CGPoint(x: 100, y: 50)
+        // Forward on the same line: start moves left, end moves right.
+        var r = Grid.inclusiveDrag(from: a, to: CGPoint(x: 200, y: 52), nudge: 4)
+        close(r.from.x, 96, "same line forward start"); close(r.to.x, 204, "same line forward end")
+        close(r.from.y, 50, "y untouched")
+        // Backward on the same line: the opposite.
+        r = Grid.inclusiveDrag(from: a, to: CGPoint(x: 20, y: 48), nudge: 4)
+        close(r.from.x, 104, "same line backward start"); close(r.to.x, 16, "same line backward end")
+        // A later line counts as forward even when the end is further left.
+        r = Grid.inclusiveDrag(from: a, to: CGPoint(x: 20, y: 90), nudge: 4)
+        close(r.from.x, 96, "next line start"); close(r.to.x, 24, "next line end")
+        // An earlier line counts as backward even when the end is further right.
+        r = Grid.inclusiveDrag(from: a, to: CGPoint(x: 300, y: 10), nudge: 4)
+        close(r.from.x, 104, "previous line start"); close(r.to.x, 296, "previous line end")
     }
 }

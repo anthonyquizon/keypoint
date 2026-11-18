@@ -19,8 +19,14 @@ grid redraws inside that cell, and on the last level (2 by default) the press **
 the cell's centre. So a normal click is two keys: `F` `J`.
 
 For more precision, press an **arrow first**: the next key picks that half of its cell
-(e.g. `↑` `E` = top half of `E`). The hint bar shows whether the next key *zooms* or
+(e.g. `↑` `E` = top half of `E`). Press the same arrow again to halve it again
+(`↑` `↑` `E` = top quarter, `↑` `↑` `↑` `E` = top eighth). The hint bar shows whether the next key *zooms* or
 *clicks*.
+
+To **highlight** (or drag anything), tap `⌃` while the grid is up. Your next pick marks
+the start instead of clicking; the grid resets to the whole screen, you pick the end, and
+Keypoint drags from one to the other — so it also works for drag-and-drop, box-select and
+sliders. `⌫` from the top of the end pick goes back to picking the start.
 
 If a selection is so small its cells couldn't fit their labels, the grid grows around it
 (to an 18pt minimum cell) and the cursor stays on what you selected.
@@ -31,10 +37,11 @@ If a selection is so small its cells couldn't fit their labels, the grid grows a
 | double-tap `⌘` | click where the mouse already is (hold `⇧` to right-click) |
 | triple-tap `⌘` | double-click there (selects a word) — a 4th tap makes it a triple-click |
 | hold `⇧` on any press | right-click instead of left-click |
+| tap `⌃` | highlight mode: pick a start, then an end, and Keypoint drags between them (tap again to turn off) |
 | a key | zoom into its cell (clicks its centre on the last level) |
-| an arrow, then a key | that half of the key's cell (e.g. `↑` `E` = top half of `E`); another arrow replaces it |
+| an arrow, then a key | that half of the key's cell (e.g. `↑` `E` = top half of `E`); the same arrow again halves it again (`↑` `↑` `E` = top quarter, up to an eighth); a different arrow replaces it |
 | `Space` / `Return` | click now at the centre of the current box |
-| `⌫` | undo the pending arrow, or go back a level |
+| `⌫` | undo the last arrow press, or go back a level |
 | `Esc` | cancel |
 
 Keys are matched by physical position, so the grid works the same on Dvorak, Colemak,
@@ -89,9 +96,12 @@ project needed).
 
 ```sh
 defaults write local.keypoint levels -int 2   # key presses per click (default 2)
+defaults write local.keypoint highlightNudge -float 4   # points each highlight end moves outward
 ```
 
-Takes effect the next time the grid opens.
+Takes effect the next time the grid opens. Highlights widen each end by `highlightNudge`
+(about half a character) so the characters under the start and end are included; raise it
+for large text, or set it to 0 for exact points.
 
 ## Project layout
 

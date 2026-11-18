@@ -19,6 +19,10 @@ final class KeyTap {
     /// When the last tap-triggered click happened (for double/triple-click).
     private var lastClickTapAt: TimeInterval = 0
 
+    // ⌃-tap detection (while the grid is open: toggles highlight mode)
+    private var ctrlCandidate = false
+    private var ctrlDownAt: TimeInterval = 0
+
     /// Key codes whose keyDown we swallowed; swallow the matching keyUp too.
     private var swallowed = Set<CGKeyCode>()
 
@@ -77,6 +81,7 @@ final class KeyTap {
 
         case .keyDown:
             cmdCandidate = false
+            ctrlCandidate = false
             guard overlay.isActive else { return pass }
             let code = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
             swallowed.insert(code)
@@ -103,13 +108,31 @@ final class KeyTap {
             overlay.shiftChanged(flags.contains(.maskShift))
         }
 
+        let now = ProcessInfo.processInfo.systemUptime
+
+        if code == KeyLayout.leftControl || code == KeyLayout.rightControl {
+            cmdCandidate = false
+            if flags.contains(.maskControl) {
+                // Shift may be held too; other modifiers make it a chord, not a tap.
+                let others: CGEventFlags = [.maskCommand, .maskAlternate, .maskSecondaryFn]
+                ctrlCandidate = overlay.isActive && flags.intersection(others).isEmpty
+                ctrlDownAt = now
+            } else {
+                if ctrlCandidate && now - ctrlDownAt <= tapMaxDuration && overlay.isActive {
+                    overlay.toggleDrag()
+                }
+                ctrlCandidate = false
+            }
+            return
+        }
+        ctrlCandidate = false
+
         guard code == KeyLayout.leftCommand || code == KeyLayout.rightCommand else {
             // Some other modifier changed while ⌘ was down → not a lone tap.
             cmdCandidate = false
             return
         }
 
-        let now = ProcessInfo.processInfo.systemUptime
         if flags.contains(.maskCommand) {
             // Shift is allowed (⇧ + double-tap ⌘ = right-click); other modifiers aren't.
             let others: CGEventFlags = [.maskControl, .maskAlternate, .maskSecondaryFn]

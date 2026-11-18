@@ -31,11 +31,16 @@ struct Grid: Equatable {
 
     /// What one key press selects: that key's cell, or — if an arrow was
     /// pressed first — the half of it toward the arrow (↑ E = top half of E).
-    func selection(row: Int, col: Int, half direction: Direction? = nil) -> CGRect {
-        let c = cell(row: row, col: col)
+    /// The same arrow `depth` times halves again each time (↑ ↑ E = top quarter).
+    func selection(row: Int, col: Int, half direction: Direction? = nil, depth: Int = 1) -> CGRect {
+        var c = cell(row: row, col: col)
         guard let direction else { return c }
-        return Grid.half(of: c, toward: direction)
+        for _ in 0..<max(1, depth) { c = Grid.half(of: c, toward: direction) }
+        return c
     }
+
+    /// Most times one arrow can be repeated before a key (3 = an eighth).
+    static let maxHalvings = 3
 
     /// This grid, grown around its centre (kept inside `bounds`) so every cell
     /// is at least `minCell` and every label fits. `focus` stays put.
@@ -69,6 +74,22 @@ struct Grid: Equatable {
         case .left:  return CGRect(x: rect.minX, y: rect.minY, width: w, height: rect.height)
         case .right: return CGRect(x: rect.minX + w, y: rect.minY, width: w, height: rect.height)
         }
+    }
+
+    /// Drag end points widened so the characters under both of them are
+    /// selected. Text selection snaps each end to the nearest gap between
+    /// characters, so a point on the right half of the first character would
+    /// start after it, and one on the left half of the last would end before
+    /// it. Each end moves `nudge` points outward along the reading order:
+    /// a forward drag (later line, or the same line and to the right; lines
+    /// count as the same within `sameLine` points) moves the start left and
+    /// the end right; a backward drag the opposite.
+    static func inclusiveDrag(from start: CGPoint, to end: CGPoint, nudge: CGFloat,
+                              sameLine: CGFloat = 6) -> (from: CGPoint, to: CGPoint) {
+        let dy = end.y - start.y
+        let forward = abs(dy) <= sameLine ? end.x >= start.x : dy > 0
+        let d = forward ? nudge : -nudge
+        return (CGPoint(x: start.x - d, y: start.y), CGPoint(x: end.x + d, y: end.y))
     }
 
     private static func edges(count n: Int, from start: CGFloat, length: CGFloat) -> [CGFloat] {

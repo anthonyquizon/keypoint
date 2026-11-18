@@ -15,11 +15,25 @@ final class OverlayController {
     private var history: [Grid] = []
     private var shiftUsed = false
 
+    /// Highlight mode (tap ⌃): the first pick sets where a drag starts, the
+    /// second where it ends, then Keypoint drags between them.
+    private var dragMode = false
+    /// Where the drag starts (view coordinates), once picked.
+    private var dragStart: CGPoint?
+
     /// Number of key presses (levels) before the click fires.
     /// Change with:  defaults write local.keypoint levels -int 3
     var maxLevels: Int {
         let v = UserDefaults.standard.integer(forKey: "levels")
         return v > 0 ? v : 2
+    }
+
+    /// How far (points) each end of a highlight moves outward so the characters
+    /// under the start and end are included. About half a character.
+    /// Change with:  defaults write local.keypoint highlightNudge -float 4
+    var highlightNudge: CGFloat {
+        let v = UserDefaults.standard.object(forKey: "highlightNudge") as? Double
+        return CGFloat(v ?? 4)
     }
 
     /// Smallest grid cell (points): enough for the smallest key label (8pt
@@ -32,7 +46,7 @@ final class OverlayController {
     func toggle() { isActive ? cancel() : show() }
 
     /// Overlay is open but nothing has been selected yet.
-    var isPristine: Bool { isActive && history.isEmpty && pending == nil }
+    var isPristine: Bool { isActive && history.isEmpty && pending == nil && !dragMode }
 
     /// Hide the overlay and click wherever the cursor currently is.
     func clickAtMouse(right: Bool) {
@@ -72,6 +86,8 @@ final class OverlayController {
         grid = Grid(rect: view.bounds)
         history = []
         shiftUsed = false
+        dragMode = false
+        dragStart = nil
         refresh(shiftDown: NSEvent.modifierFlags.contains(.shift))
 
         win.orderFrontRegardless()
@@ -80,6 +96,8 @@ final class OverlayController {
 
     func cancel() {
         clearPending()
+        dragMode = false
+        dragStart = nil
         guard isActive else { return }
         isActive = false
         window?.orderOut(nil)
@@ -89,8 +107,18 @@ final class OverlayController {
         refresh(shiftDown: down)
     }
 
+    /// Turn highlight (drag) mode on or off. Turning it off drops a picked start.
+    func toggleDrag() {
+        guard isActive else { return }
+        dragMode.toggle()
+        if !dragMode { dragStart = nil }
+        refresh(shiftDown: NSEvent.modifierFlags.contains(.shift))
+    }
+
     /// An arrow pressed before a key: the next key picks that half of its cell.
     private var pending: Grid.Direction?
+    /// How many times `pending` was pressed in a row: each repeat halves again.
+    private var pendingDepth = 1
 
     func handleKey(_ code: CGKeyCode, flags: CGEventFlags) {
         let shift = flags.contains(.maskShift)
@@ -101,10 +129,20 @@ final class OverlayController {
             clearPending()
             cancel()
         case KeyLayout.delete:
-            if pending != nil { clearPending(); refresh(shiftDown: shift); return }
+            if pending != nil {
+                // Undo one press of the arrow: a quarter goes back to a half, a half to none.
+                if pendingDepth > 1 { pendingDepth -= 1 } else { clearPending() }
+                refresh(shiftDown: shift)
+                return
+            }
             if let prev = history.popLast() {
                 grid = prev
                 moveCursor(to: global(grid.focus))
+                refresh(shiftDown: shift)
+            } else if let start = dragStart {
+                // Back from picking the end to picking the start.
+                dragStart = nil
+                moveCursor(to: global(start))
                 refresh(shiftDown: shift)
             } else {
                 cancel()
@@ -115,22 +153,31 @@ final class OverlayController {
             finish(rightClick: shiftUsed)
         case _ where KeyLayout.arrows[code] != nil:
             // An arrow then a key: that half of the key's cell (↑ E = top of E).
-            // Another arrow replaces it.
-            pending = KeyLayout.arrows[code]
+            // The same arrow again halves the half (↑ ↑ E = top quarter); a
+            // different arrow replaces it.
+            let dir = KeyLayout.arrows[code]
+            if dir == pending {
+                pendingDepth = min(pendingDepth + 1, Grid.maxHalvings)
+            } else {
+                pending = dir
+                pendingDepth = 1
+            }
             refresh(shiftDown: shift)
         default:
             guard let pos = KeyLayout.position(of: code) else {
                 NSSound.beep()
                 return
             }
-            let half = pending
+            let (half, depth) = (pending, pendingDepth)
             clearPending()
-            enter(Grid(rect: grid.selection(row: pos.row, col: pos.col, half: half)), shift: shift)
+            enter(Grid(rect: grid.selection(row: pos.row, col: pos.col, half: half, depth: depth)),
+                  shift: shift)
         }
     }
 
     private func clearPending() {
         pending = nil
+        pendingDepth = 1
     }
 
     /// Move to `next`: click at its focus on the last level, otherwise zoom into it.
@@ -157,10 +204,30 @@ final class OverlayController {
         view.isFinal = isFinalLevel
         view.rightClick = shiftDown || shiftUsed
         view.pending = pending
+        view.pendingDepth = pendingDepth
+        view.dragMode = dragMode
+        view.dragStart = dragStart
         view.needsDisplay = true
     }
 
     private func finish(rightClick: Bool) {
+        if dragMode {
+            guard let start = dragStart else {
+                // Start picked: begin again from the whole screen to pick the end.
+                dragStart = grid.focus
+                grid = Grid(rect: view.bounds)
+                history = []
+                refresh(shiftDown: false)
+                return
+            }
+            let (from, to) = Grid.inclusiveDrag(from: global(start), to: global(grid.focus),
+                                                nudge: highlightNudge)
+            cancel()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+                Mouse.drag(from: from, to: to)
+            }
+            return
+        }
         let point = global(grid.focus)
         cancel()
         // Let the overlay disappear and the tap callback return before clicking.
@@ -227,17 +294,35 @@ enum Mouse {
         let (downType, upType, button): (CGEventType, CGEventType, CGMouseButton) = right
             ? (.rightMouseDown, .rightMouseUp, .right)
             : (.leftMouseDown, .leftMouseUp, .left)
-        let down = CGEvent(mouseEventSource: source, mouseType: downType,
-                           mouseCursorPosition: p, mouseButton: button)
-        let up = CGEvent(mouseEventSource: source, mouseType: upType,
-                         mouseCursorPosition: p, mouseButton: button)
-        // Clear modifiers so a still-held Shift doesn't turn this into a shift-click.
-        down?.flags = []
-        up?.flags = []
-        down?.setIntegerValueField(.mouseEventClickState, value: Int64(count))
-        up?.setIntegerValueField(.mouseEventClickState, value: Int64(count))
-        down?.post(tap: .cghidEventTap)
-        up?.post(tap: .cghidEventTap)
+        post(downType, at: p, button: button, clickState: count)
+        post(upType, at: p, button: button, clickState: count)
+    }
+
+    /// Left-drag from `a` to `b`: press, a short pause, a run of drag events
+    /// along the way (drag-and-drop and box-select need to see movement), release.
+    static func drag(from a: CGPoint, to b: CGPoint) {
+        move(to: a)
+        post(.leftMouseDown, at: a, button: .left, clickState: 1)
+        let steps = 20, pause = 0.05, step = 0.01
+        for i in 1...steps {
+            let t = CGFloat(i) / CGFloat(steps)
+            let p = CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
+            DispatchQueue.main.asyncAfter(deadline: .now() + pause + Double(i) * step) {
+                post(.leftMouseDragged, at: p, button: .left, clickState: 1)
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + pause * 2 + Double(steps) * step) {
+            post(.leftMouseUp, at: b, button: .left, clickState: 1)
+        }
+    }
+
+    private static func post(_ type: CGEventType, at p: CGPoint, button: CGMouseButton, clickState: Int) {
+        let e = CGEvent(mouseEventSource: source, mouseType: type,
+                        mouseCursorPosition: p, mouseButton: button)
+        // Clear modifiers so a still-held ⇧ or ⌃ doesn't make this a shift- or ⌃-click.
+        e?.flags = []
+        e?.setIntegerValueField(.mouseEventClickState, value: Int64(clickState))
+        e?.post(tap: .cghidEventTap)
     }
 }
 
@@ -248,6 +333,14 @@ final class GridView: NSView {
     var isFinal = false
     var rightClick = false
     var pending: Grid.Direction?
+    var pendingDepth = 1
+    var dragMode = false
+    var dragStart: CGPoint?
+
+    /// Accent for the current mode: green highlight, red right-click, blue click.
+    private var accent: NSColor {
+        dragMode ? .systemGreen : rightClick ? .systemRed : .systemBlue
+    }
 
     override var isFlipped: Bool { true }
 
@@ -271,10 +364,11 @@ final class GridView: NSView {
 
         // Arrow pressed, waiting for a key: shade that half of every cell.
         if let dir = pending {
-            (rightClick ? NSColor.systemRed : NSColor.systemYellow).withAlphaComponent(0.25).setFill()
+            (dragMode ? NSColor.systemGreen : rightClick ? NSColor.systemRed : NSColor.systemYellow)
+                .withAlphaComponent(0.25).setFill()
             for r in 0..<KeyLayout.rowCount {
                 for c in 0..<KeyLayout.columnCount {
-                    grid.selection(row: r, col: c, half: dir).fill()
+                    grid.selection(row: r, col: c, half: dir, depth: pendingDepth).fill()
                 }
             }
         }
@@ -296,11 +390,12 @@ final class GridView: NSView {
         // Region border.
         let border = NSBezierPath(rect: region.insetBy(dx: 0.5, dy: 0.5))
         border.lineWidth = level == 0 ? 0 : 2
-        (rightClick ? NSColor.systemRed : NSColor.systemBlue).setStroke()
+        accent.setStroke()
         if level > 0 { border.stroke() }
 
         // Key labels.
-        let pill = (rightClick ? NSColor.systemRed : NSColor.black).withAlphaComponent(0.6)
+        let pill = (dragMode ? NSColor.systemGreen : rightClick ? NSColor.systemRed : NSColor.black)
+            .withAlphaComponent(0.6)
 
         for (r, row) in KeyLayout.rows.enumerated() {
             for (c, key) in row.enumerated() {
@@ -321,21 +416,34 @@ final class GridView: NSView {
             }
         }
 
+        // Highlight start, once picked.
+        if let p = dragStart {
+            let ring = NSBezierPath(ovalIn: CGRect(x: p.x - 9, y: p.y - 9, width: 18, height: 18))
+            ring.lineWidth = 3
+            NSColor.white.setStroke()
+            ring.stroke()
+            NSColor.systemGreen.setFill()
+            NSBezierPath(ovalIn: CGRect(x: p.x - 5, y: p.y - 5, width: 10, height: 10)).fill()
+        }
+
         drawHint()
     }
 
     private func drawHint() {
-        let mode = rightClick ? "RIGHT CLICK" : "left click"
-        let stage = isFinal ? "next key clicks" : "next key zooms"
+        let mode = dragMode ? (dragStart == nil ? "HIGHLIGHT · pick start" : "HIGHLIGHT · pick end")
+            : rightClick ? "RIGHT CLICK" : "left click"
+        let action = !dragMode ? "clicks" : dragStart == nil ? "sets start" : "highlights"
+        let stage = isFinal ? "next key \(action)" : "next key zooms"
+        let part = ["half", "quarter", "eighth"][min(pendingDepth, 3) - 1]
         let half = pending.map { d -> String in
             switch d {
-            case .up: return " · ↑ top half"
-            case .down: return " · ↓ bottom half"
-            case .left: return " · ← left half"
-            case .right: return " · → right half"
+            case .up: return " · ↑ top \(part)"
+            case .down: return " · ↓ bottom \(part)"
+            case .left: return " · ← left \(part)"
+            case .right: return " · → right \(part)"
             }
         } ?? ""
-        let s = "Level \(level + 1) · \(stage)\(half) · \(mode) · key = its cell · arrow then key = that half · ⇧ right-click · space click here · ⌫ back · esc cancel"
+        let s = "Level \(level + 1) · \(stage)\(half) · \(mode) · key = its cell · arrow then key = that half (again = half again) · ⇧ right-click · ⌃ highlight · space click here · ⌫ back · esc cancel"
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
             .foregroundColor: NSColor.white,
