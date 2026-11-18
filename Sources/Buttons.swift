@@ -4,33 +4,47 @@ import Foundation
 /// Which mouse button a click uses.
 enum MouseButton { case left, right, middle }
 
-/// The button chosen for the current pick: ⇧ = right, ⌥ = middle (⇧ wins).
-/// Holding either on a key press sticks for the rest of the pick; a lone tap
-/// toggles it, and turning one on turns the other off.
-struct ButtonChoice {
-    private(set) var right = false
-    private(set) var middle = false
+/// What the next pick does: a left, right or middle click, or a highlight (drag).
+enum ClickMode {
+    case left, right, middle, highlight
+
+    /// The button a click in this mode uses (a highlight drags with the left button).
+    var button: MouseButton {
+        switch self {
+        case .left, .highlight: return .left
+        case .right: return .right
+        case .middle: return .middle
+        }
+    }
+
+    /// The mode a modifier picks: ⇧ right, ⌃ highlight, ⌥ middle (⇧ ⌃ ⌥ order if several).
+    static func picked(by flags: CGEventFlags) -> ClickMode? {
+        if flags.contains(.maskShift) { return .right }
+        if flags.contains(.maskControl) { return .highlight }
+        if flags.contains(.maskAlternate) { return .middle }
+        return nil
+    }
+}
+
+/// The mode for the current pick. Any ⇧ / ⌃ / ⌥ overrides whatever mode is on:
+/// held on a key press it switches to its mode (and that sticks); a lone tap
+/// switches to its mode, or back to a left click if that mode was already on.
+struct ModeChoice {
+    private(set) var mode = ClickMode.left
 
     /// A key was pressed with these modifiers held.
     mutating func keyPressed(flags: CGEventFlags) {
-        if flags.contains(.maskShift) { right = true }
-        if flags.contains(.maskAlternate) { middle = true }
+        if let m = ClickMode.picked(by: flags) { mode = m }
     }
 
-    mutating func toggleRight() {
-        right.toggle()
-        if right { middle = false }
+    /// A lone tap of the modifier for `m`.
+    mutating func tapped(_ m: ClickMode) {
+        mode = mode == m ? .left : m
     }
 
-    mutating func toggleMiddle() {
-        middle.toggle()
-        if middle { right = false }
-    }
-
-    /// The button, counting modifiers held right now as well as earlier choices.
-    func button(held: CGEventFlags = []) -> MouseButton {
-        right || held.contains(.maskShift) ? .right
-            : middle || held.contains(.maskAlternate) ? .middle : .left
+    /// The mode, counting modifiers held right now over the chosen one.
+    func current(held: CGEventFlags = []) -> ClickMode {
+        ClickMode.picked(by: held) ?? mode
     }
 }
 

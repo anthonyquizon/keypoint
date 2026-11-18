@@ -17,47 +17,55 @@ extension GridTests {
     }
 
     static func defaultsToLeft() {
-        check(ButtonChoice().button() == .left, "nothing chosen = left")
+        check(ModeChoice().current() == .left, "nothing chosen = left")
+        check(ClickMode.highlight.button == .left, "highlight drags with the left button")
     }
 
     static func heldModifiersPickButton() {
-        let c = ButtonChoice()
-        check(c.button(held: .maskShift) == .right, "⇧ held = right")
-        check(c.button(held: .maskAlternate) == .middle, "⌥ held = middle")
-        check(c.button(held: [.maskShift, .maskAlternate]) == .right, "⇧ beats ⌥")
-        check(c.button(held: .maskCommand) == .left, "⌘ held = still left")
+        let c = ModeChoice()
+        check(c.current(held: .maskShift) == .right, "⇧ held = right")
+        check(c.current(held: .maskControl) == .highlight, "⌃ held = highlight")
+        check(c.current(held: .maskAlternate) == .middle, "⌥ held = middle")
+        check(c.current(held: .maskCommand) == .left, "⌘ held = still left")
+
+        var m = ModeChoice()
+        m.tapped(.middle)
+        check(m.current(held: .maskShift) == .right, "held ⇧ shows over a tapped middle")
+        check(m.current(held: []) == .middle, "released, back to the tapped mode")
     }
 
     static func keyPressWithModifierSticks() {
-        var c = ButtonChoice()
+        var c = ModeChoice()
         c.keyPressed(flags: .maskShift)
-        check(c.button() == .right, "⇧ + key sticks after release")
+        check(c.mode == .right, "⇧ + key sticks after release")
         c.keyPressed(flags: [])
-        check(c.button() == .right, "a later plain key keeps it")
-
-        var m = ButtonChoice()
-        m.keyPressed(flags: .maskAlternate)
-        check(m.button() == .middle, "⌥ + key sticks after release")
+        check(c.mode == .right, "a later plain key keeps it")
+        c.keyPressed(flags: .maskAlternate)
+        check(c.mode == .middle, "⌥ + key overrides right")
+        c.keyPressed(flags: .maskControl)
+        check(c.mode == .highlight, "⌃ + key overrides middle")
+        c.keyPressed(flags: .maskShift)
+        check(c.mode == .right, "⇧ + key overrides highlight")
     }
 
     static func tapsToggleAndExclude() {
-        var c = ButtonChoice()
-        c.toggleRight()
-        check(c.button() == .right, "tap ⇧ = right on")
-        c.toggleRight()
-        check(c.button() == .left, "tap ⇧ again = off")
+        var c = ModeChoice()
+        c.tapped(.right)
+        check(c.mode == .right, "tap ⇧ = right on")
+        c.tapped(.right)
+        check(c.mode == .left, "tap ⇧ again = back to left")
 
-        c.toggleMiddle()
-        check(c.button() == .middle, "tap ⌥ = middle on")
-        c.toggleRight()
-        check(c.button() == .right && !c.middle, "tap ⇧ switches middle → right")
-        c.toggleMiddle()
-        check(c.button() == .middle && !c.right, "tap ⌥ switches right → middle")
+        c.tapped(.middle)
+        check(c.mode == .middle, "tap ⌥ = middle on")
+        c.tapped(.highlight)
+        check(c.mode == .highlight, "tap ⌃ overrides middle")
+        c.tapped(.right)
+        check(c.mode == .right, "tap ⇧ overrides highlight")
 
-        var held = ButtonChoice()
-        held.keyPressed(flags: .maskAlternate)
-        held.toggleMiddle()
-        check(held.button() == .left, "tap ⌥ turns off a held-⌥ middle")
+        var held = ModeChoice()
+        held.keyPressed(flags: .maskControl)
+        held.tapped(.highlight)
+        check(held.mode == .left, "tap ⌃ turns off a held-⌃ highlight")
     }
 
     static let shiftTap = ModifierTap(codes: [56, 60], flag: .maskShift)

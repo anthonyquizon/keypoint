@@ -14,11 +14,11 @@ final class OverlayController {
     private var region: CGRect { grid.rect }
     private var history: [Grid] = []
     /// Right / middle chosen so far this pick with ⇧ / ⌥.
-    private var choice = ButtonChoice()
+    private var choice = ModeChoice()
 
-    /// Highlight mode (tap ⌃): the first pick sets where a drag starts, the
+    /// Highlight mode (tap ⌃, or hold it on a press): the first pick sets where a drag starts, the
     /// second where it ends, then Keypoint drags between them.
-    private var dragMode = false
+    private var dragMode: Bool { choice.mode == .highlight }
     /// Where the drag starts (view coordinates), once picked.
     private var dragStart: CGPoint?
 
@@ -45,7 +45,7 @@ final class OverlayController {
     private var isFinalLevel: Bool { history.count + 1 >= maxLevels }
 
     /// Button a click would use now: ⇧ / ⌥ held now or pressed earlier = right / middle.
-    var currentButton: Mouse.Button { choice.button(held: held) }
+    var currentButton: Mouse.Button { choice.current(held: held).button }
 
     /// Modifiers held right now, from the last flags-changed event.
     private var held: CGEventFlags = []
@@ -95,9 +95,8 @@ final class OverlayController {
 
         grid = Grid(rect: view.bounds)
         history = []
-        choice = ButtonChoice()
+        choice = ModeChoice()
         held = CGEventSource.flagsState(.combinedSessionState)
-        dragMode = false
         dragStart = nil
         refresh()
 
@@ -107,7 +106,7 @@ final class OverlayController {
 
     func cancel() {
         clearPending()
-        dragMode = false
+        choice = ModeChoice()
         dragStart = nil
         guard isActive else { return }
         isActive = false
@@ -119,26 +118,17 @@ final class OverlayController {
         refresh()
     }
 
-    /// Tap ⇧: turn right-click on or off for this pick (holding ⇧ on a press also turns it on).
-    func toggleRight() {
+    /// A lone tap of ⇧ / ⌃ / ⌥: switch to its mode, or back to left-click if it's already on.
+    func modeTapped(_ mode: ClickMode) {
         guard isActive else { return }
-        choice.toggleRight()
+        choice.tapped(mode)
+        modeChanged()
         refresh()
     }
 
-    /// Tap ⌥: turn middle-click on or off for this pick (holding ⌥ on a press also turns it on).
-    func toggleMiddle() {
-        guard isActive else { return }
-        choice.toggleMiddle()
-        refresh()
-    }
-
-    /// Turn highlight (drag) mode on or off. Turning it off drops a picked start.
-    func toggleDrag() {
-        guard isActive else { return }
-        dragMode.toggle()
+    /// Leaving highlight mode drops a picked start.
+    private func modeChanged() {
         if !dragMode { dragStart = nil }
-        refresh()
     }
 
     /// An arrow pressed before a key: the next key picks that half of its cell.
@@ -147,7 +137,9 @@ final class OverlayController {
     private var pendingDepth = 1
 
     func handleKey(_ code: CGKeyCode, flags: CGEventFlags) {
+        // ⇧ / ⌃ / ⌥ held on a press switches to its mode, overriding the current one.
         choice.keyPressed(flags: flags)
+        modeChanged()
 
         switch code {
         case KeyLayout.escape:
@@ -224,15 +216,16 @@ final class OverlayController {
 
     // MARK: - Private
 
-    /// Redraw. The button shown counts ⇧ / ⌥ held right now as well as earlier presses.
+    /// Redraw. A ⇧ / ⌃ / ⌥ held right now shows its mode over the chosen one.
     private func refresh() {
         view.grid = grid
         view.level = history.count
         view.isFinal = isFinalLevel
-        view.button = currentButton
+        let shown = choice.current(held: held)
+        view.button = shown.button
         view.pending = pending
         view.pendingDepth = pendingDepth
-        view.dragMode = dragMode
+        view.dragMode = shown == .highlight
         view.dragStart = dragStart
         view.needsDisplay = true
     }
@@ -256,7 +249,7 @@ final class OverlayController {
             return
         }
         let point = global(grid.focus)
-        let button = override ?? choice.button()
+        let button = override ?? choice.mode.button
         cancel()
         // Let the overlay disappear and the tap callback return before clicking.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
@@ -484,7 +477,7 @@ final class GridView: NSView {
             case .right: return " · → right \(part)"
             }
         } ?? ""
-        let s = "Level \(level + 1) · \(stage)\(half) · \(mode) · key = its cell · arrow then key = that half (again = half again) · ⇧ right-click · ⌥ middle-click (hold or tap) · ⌃ highlight · ⌘ click here · space middle · ⏎ right · ⌫ back · esc cancel"
+        let s = "Level \(level + 1) · \(stage)\(half) · \(mode) · key = its cell · arrow then key = that half (again = half again) · ⇧ right · ⌥ middle · ⌃ highlight (hold or tap; overrides) · ⌘ click here · space middle · ⏎ right · ⌫ back · esc cancel"
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
             .foregroundColor: NSColor.white,

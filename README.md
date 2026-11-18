@@ -23,13 +23,18 @@ For more precision, press an **arrow first**: the next key picks that half of it
 (`↑` `↑` `E` = top quarter, `↑` `↑` `↑` `E` = top eighth). The hint bar shows whether the next key *zooms* or
 *clicks*.
 
-To **highlight** (or drag anything), tap `⌃` while the grid is up. Your next pick marks
+To **highlight** (or drag anything), tap `⌃` while the grid is up (or hold it on any press). Your next pick marks
 the start instead of clicking; the grid resets to the whole screen, you pick the end, and
 Keypoint drags from one to the other — so it also works for drag-and-drop, box-select and
 sliders. `⌫` from the top of the end pick goes back to picking the start.
 
 If a selection is so small its cells couldn't fit their labels, the grid grows around it
 (to an 18pt minimum cell) and the cursor stays on what you selected.
+
+The modes — `⇧` right-click, `⌥` middle-click, `⌃` highlight — work the same way: hold the
+modifier on any press, or tap it on its own. Whichever you use last overrides the current
+mode (tap `⌥`, then `⇧F` `J` right-clicks), and tapping the mode that's already on goes back
+to a left click. Leaving highlight drops a picked start.
 
 | Key | Action |
 |---|---|
@@ -38,9 +43,10 @@ If a selection is so small its cells couldn't fit their labels, the grid grows a
 | triple-tap `⌘` | double-click there (selects a word) — a 4th tap makes it a triple-click |
 | hold `⇧` on any press | right-click instead of left-click |
 | hold `⌥` on any press | middle-click instead of left-click (e.g. open a link in a new tab) |
-| tap `⇧` | toggle right-click on / off for this pick |
-| tap `⌥` | toggle middle-click on / off for this pick |
+| tap `⇧` | right-click mode (tap again for left-click) |
+| tap `⌥` | middle-click mode (tap again for left-click) |
 | tap `⌃` | highlight mode: pick a start, then an end, and Keypoint drags between them (tap again to turn off) |
+| hold `⌃` on any press | turn highlight mode on from that press (e.g. `⌃F` `J` sets the start) |
 | a key | zoom into its cell (clicks its centre on the last level) |
 | an arrow, then a key | that half of the key's cell (e.g. `↑` `E` = top half of `E`); the same arrow again halves it again (`↑` `↑` `E` = top quarter, up to an eighth); a different arrow replaces it |
 | `Space` | middle-click now at the centre of the current box |

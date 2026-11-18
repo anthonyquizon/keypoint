@@ -22,11 +22,11 @@ final class KeyTap {
     /// ⌃ may be tapped with ⇧ held (a right-click highlight start is harmless).
     private var modifierTaps: [(tap: ModifierTap, action: (OverlayController) -> Void)] = [
         (ModifierTap(codes: [KeyLayout.leftControl, KeyLayout.rightControl], flag: .maskControl,
-                     allowed: .maskShift), { $0.toggleDrag() }),
+                     allowed: .maskShift), { $0.modeTapped(.highlight) }),
         (ModifierTap(codes: [KeyLayout.leftShift, KeyLayout.rightShift], flag: .maskShift),
-         { $0.toggleRight() }),
+         { $0.modeTapped(.right) }),
         (ModifierTap(codes: [KeyLayout.leftOption, KeyLayout.rightOption], flag: .maskAlternate),
-         { $0.toggleMiddle() }),
+         { $0.modeTapped(.middle) }),
     ]
 
     /// Key codes whose keyDown we swallowed; swallow the matching keyUp too.
