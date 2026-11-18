@@ -13,15 +13,21 @@ final class KeyTap {
     private var cmdCandidate = false
     private var cmdDownAt: TimeInterval = 0
     private let tapMaxDuration: TimeInterval = 0.35
-    /// Two ⌘ taps within this window = click at the current mouse position.
+    /// ⌘ taps within this window of a tap-click turn it into a double / triple-click.
     private let doubleTapWindow: TimeInterval = 0.3
-    private var lastTapAt: TimeInterval = 0
     /// When the last tap-triggered click happened (for double/triple-click).
     private var lastClickTapAt: TimeInterval = 0
 
-    // ⌃-tap detection (while the grid is open: toggles highlight mode)
-    private var ctrlCandidate = false
-    private var ctrlDownAt: TimeInterval = 0
+    /// Lone modifier taps while the grid is open: ⌃ highlight, ⇧ right-click, ⌥ middle-click.
+    /// ⌃ may be tapped with ⇧ held (a right-click highlight start is harmless).
+    private var modifierTaps: [(tap: ModifierTap, action: (OverlayController) -> Void)] = [
+        (ModifierTap(codes: [KeyLayout.leftControl, KeyLayout.rightControl], flag: .maskControl,
+                     allowed: .maskShift), { $0.toggleDrag() }),
+        (ModifierTap(codes: [KeyLayout.leftShift, KeyLayout.rightShift], flag: .maskShift),
+         { $0.toggleRight() }),
+        (ModifierTap(codes: [KeyLayout.leftOption, KeyLayout.rightOption], flag: .maskAlternate),
+         { $0.toggleMiddle() }),
+    ]
 
     /// Key codes whose keyDown we swallowed; swallow the matching keyUp too.
     private var swallowed = Set<CGKeyCode>()
@@ -81,7 +87,7 @@ final class KeyTap {
 
         case .keyDown:
             cmdCandidate = false
-            ctrlCandidate = false
+            for i in modifierTaps.indices { modifierTaps[i].tap.candidate = false }
             guard overlay.isActive else { return pass }
             let code = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
             swallowed.insert(code)
@@ -105,27 +111,22 @@ final class KeyTap {
         let flags = event.flags
 
         if overlay.isActive {
-            overlay.shiftChanged(flags.contains(.maskShift))
+            // Use this event's flags: NSEvent.modifierFlags can lag behind inside the tap.
+            overlay.modifiersChanged(flags)
         }
 
         let now = ProcessInfo.processInfo.systemUptime
 
-        if code == KeyLayout.leftControl || code == KeyLayout.rightControl {
+        if let i = modifierTaps.firstIndex(where: { $0.tap.codes.contains(code) }) {
             cmdCandidate = false
-            if flags.contains(.maskControl) {
-                // Shift may be held too; other modifiers make it a chord, not a tap.
-                let others: CGEventFlags = [.maskCommand, .maskAlternate, .maskSecondaryFn]
-                ctrlCandidate = overlay.isActive && flags.intersection(others).isEmpty
-                ctrlDownAt = now
-            } else {
-                if ctrlCandidate && now - ctrlDownAt <= tapMaxDuration && overlay.isActive {
-                    overlay.toggleDrag()
-                }
-                ctrlCandidate = false
+            // Any other modifier changing means those aren't lone taps.
+            for j in modifierTaps.indices where j != i { modifierTaps[j].tap.candidate = false }
+            if modifierTaps[i].tap.changed(flags: flags, now: now, active: overlay.isActive) {
+                modifierTaps[i].action(overlay)
             }
             return
         }
-        ctrlCandidate = false
+        for i in modifierTaps.indices { modifierTaps[i].tap.candidate = false }
 
         guard code == KeyLayout.leftCommand || code == KeyLayout.rightCommand else {
             // Some other modifier changed while ⌘ was down → not a lone tap.
@@ -134,8 +135,8 @@ final class KeyTap {
         }
 
         if flags.contains(.maskCommand) {
-            // Shift is allowed (⇧ + double-tap ⌘ = right-click); other modifiers aren't.
-            let others: CGEventFlags = [.maskControl, .maskAlternate, .maskSecondaryFn]
+            // ⇧ / ⌥ are allowed (+ ⌘ tap-click = right / middle click); other modifiers aren't.
+            let others: CGEventFlags = [.maskControl, .maskSecondaryFn]
             cmdCandidate = flags.intersection(others).isEmpty
             cmdDownAt = now
         } else {
@@ -144,16 +145,16 @@ final class KeyTap {
                     && overlay.repeatLastClick() {
                     // 3rd / 4th tap: turn the click into a double / triple-click.
                     lastClickTapAt = now
-                } else if now - lastTapAt <= doubleTapWindow && overlay.isPristine {
-                    lastTapAt = 0
+                } else if overlay.isActive {
+                    // Grid up: click where the mouse is (it sits on the current box).
                     lastClickTapAt = now
-                    overlay.clickAtMouse(right: flags.contains(.maskShift))
+                    overlay.clickAtMouse(button: overlay.currentButton)
                 } else {
-                    lastTapAt = now
-                    overlay.toggle()
+                    overlay.show()
                 }
             }
             cmdCandidate = false
         }
     }
 }
+

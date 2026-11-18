@@ -35,6 +35,7 @@ struct GridTests {
         arrowHalves()
         inclusiveDragWidensOutward()
         repeatedArrowHalvesAgain()
+        buttonTests()
 
         print(failures == 0 ? "OK — \(checks) checks passed" : "\(failures) of \(checks) checks failed")
         if failures > 0 { exit(1) }

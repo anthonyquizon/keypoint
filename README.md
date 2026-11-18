@@ -33,14 +33,18 @@ If a selection is so small its cells couldn't fit their labels, the grid grows a
 
 | Key | Action |
 |---|---|
-| tap `⌘` | show / hide the grid |
-| double-tap `⌘` | click where the mouse already is (hold `⇧` to right-click) |
+| tap `⌘` | show the grid |
+| tap `⌘` again | click where the mouse already is — so double-tap `⌘` clicks without moving it (hold `⇧` to right-click, `⌥` to middle-click) |
 | triple-tap `⌘` | double-click there (selects a word) — a 4th tap makes it a triple-click |
 | hold `⇧` on any press | right-click instead of left-click |
+| hold `⌥` on any press | middle-click instead of left-click (e.g. open a link in a new tab) |
+| tap `⇧` | toggle right-click on / off for this pick |
+| tap `⌥` | toggle middle-click on / off for this pick |
 | tap `⌃` | highlight mode: pick a start, then an end, and Keypoint drags between them (tap again to turn off) |
 | a key | zoom into its cell (clicks its centre on the last level) |
 | an arrow, then a key | that half of the key's cell (e.g. `↑` `E` = top half of `E`); the same arrow again halves it again (`↑` `↑` `E` = top quarter, up to an eighth); a different arrow replaces it |
-| `Space` / `Return` | click now at the centre of the current box |
+| `Space` | middle-click now at the centre of the current box |
+| `Return` | right-click now at the centre of the current box |
 | `⌫` | undo the last arrow press, or go back a level |
 | `Esc` | cancel |
 
