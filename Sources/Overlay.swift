@@ -49,7 +49,7 @@ final class OverlayController {
     /// Change with:  defaults write local.keypoint clickSize -float 40
     var clickSize: CGFloat {
         let v = UserDefaults.standard.object(forKey: "clickSize") as? Double
-        return CGFloat(v ?? 40)
+        return CGFloat(v ?? 80)
     }
 
     /// The next key clicks: the last level, or the arrows make its pick small enough.
