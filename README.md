@@ -21,8 +21,8 @@ the cell's centre. So a normal click is two keys: `F` `J`.
 For more precision, press **arrows first**: each one halves the next key's cell again, in
 order (`↑` `E` = top half of `E`, `↑` `←` `E` = its top-left quarter, `↑` `↑` `E` = top
 quarter, `↑` `↓` `E` = the second quarter from the top). Up to four per axis (a
-sixteenth); `⌫` undoes the last arrow. If the arrows make a pick small enough (40pt or less
-each way — `defaults write local.keypoint clickSize -float 40`), the key clicks right away
+sixteenth); `⌫` undoes the last arrow. If the arrows make a pick small enough (80pt or less
+either way — `defaults write local.keypoint clickSize -float 80`), the key clicks its centre right away
 in the current mode instead of zooming another level. The hint bar shows whether the next key *zooms* or
 *clicks*.
 
@@ -51,7 +51,7 @@ to a left click. Leaving highlight drops a picked start.
 | tap `⌃` | highlight mode: pick a start, then an end, and Keypoint drags between them (tap again to turn off) |
 | hold `⌃` on any press | turn highlight mode on from that press (e.g. `⌃F` `J` sets the start) |
 | a key | zoom into its cell (clicks its centre on the last level) |
-| arrows, then a key | each arrow halves the key's cell again, in order: `↑` `E` = top half, `↑` `←` `E` = top-left quarter, `↑` `↓` `E` = 2nd quarter from the top (up to a sixteenth per axis; a pick ≤ 40pt clicks at once) |
+| arrows, then a key | each arrow halves the key's cell again, in order: `↑` `E` = top half, `↑` `←` `E` = top-left quarter, `↑` `↓` `E` = 2nd quarter from the top (up to a sixteenth per axis; a pick ≤ 80pt wide or tall clicks its centre at once) |
 | `Space` | middle-click now at the centre of the current box |
 | `Return` | right-click now at the centre of the current box |
 | `⌫` | undo the last arrow press, or go back a level |

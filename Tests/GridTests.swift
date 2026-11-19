@@ -170,8 +170,9 @@ struct GridTests {
 
     static func smallPicksClickAtOnce() {
         check(Grid.isClickSize(CGRect(x: 0, y: 0, width: 20, height: 24), size: 24), "≤ size both ways clicks")
-        check(!Grid.isClickSize(CGRect(x: 0, y: 0, width: 20, height: 30), size: 24), "too tall zooms")
-        check(!Grid.isClickSize(CGRect(x: 0, y: 0, width: 30, height: 10), size: 24), "too wide zooms")
+        check(Grid.isClickSize(CGRect(x: 0, y: 0, width: 20, height: 300), size: 24), "narrow enough clicks")
+        check(Grid.isClickSize(CGRect(x: 0, y: 0, width: 300, height: 10), size: 24), "short enough clicks")
+        check(!Grid.isClickSize(CGRect(x: 0, y: 0, width: 30, height: 30), size: 24), "too big both ways zooms")
         // A 1920 × 1080 screen: an F cell is 192 × 270; ← ← ← ↑ ↑ ↑ ↑ gets it to 24 × ~17.
         let g = Grid(rect: CGRect(x: 0, y: 0, width: 1920, height: 1080))
         let pick = g.selection(row: 2, col: 3, arrows: [.left, .left, .left, .up, .up, .up, .up])

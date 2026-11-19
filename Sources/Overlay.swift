@@ -44,12 +44,12 @@ final class OverlayController {
     /// The next key press clicks rather than zooming.
     private var isFinalLevel: Bool { history.count + 1 >= maxLevels }
 
-    /// A key's selection at most this many points both ways clicks at once
+    /// A key's selection at most this many points either way clicks at once
     /// instead of zooming (so a few arrows can finish a pick early).
-    /// Change with:  defaults write local.keypoint clickSize -float 40
+    /// Change with:  defaults write local.keypoint clickSize -float 80
     var clickSize: CGFloat {
         let v = UserDefaults.standard.object(forKey: "clickSize") as? Double
-        return CGFloat(v ?? 80)
+        return CGFloat(v ?? 40)
     }
 
     /// The next key clicks: the last level, or the arrows make its pick small enough.

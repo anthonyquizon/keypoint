@@ -39,10 +39,10 @@ struct Grid: Equatable {
     /// Most arrows per axis before a key (4 = a sixteenth of the cell).
     static let maxHalvings = 4
 
-    /// A selection this small (≤ `size` points both ways) is clicked at once:
-    /// zooming into it couldn't get any more precise.
+    /// A selection this thin (≤ `size` points either way) is clicked at its
+    /// centre at once: e.g. ↑ ↑ ↑ ↑ narrows a cell to a strip one line tall.
     static func isClickSize(_ r: CGRect, size: CGFloat) -> Bool {
-        r.width <= size && r.height <= size
+        r.width <= size || r.height <= size
     }
 
     /// `arrows` with `direction` pushed on, or nil if its axis is already at `maxHalvings`.
