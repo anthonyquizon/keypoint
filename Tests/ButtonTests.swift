@@ -1,6 +1,6 @@
 import CoreGraphics
 
-// Button choice (⇧ / ⌥) and lone modifier-tap detection. Run with:  ./build.sh test
+// Mode choice (Tab / ⌃ / ⌥) and lone modifier-tap detection. Run with:  ./build.sh test
 
 extension GridTests {
     static func buttonTests() {
@@ -8,6 +8,7 @@ extension GridTests {
         heldModifiersPickButton()
         keyPressWithModifierSticks()
         tapsToggleAndExclude()
+        tabCycles()
         loneTapFires()
         slowPressIsNotATap()
         chordIsNotATap()
@@ -23,49 +24,58 @@ extension GridTests {
 
     static func heldModifiersPickButton() {
         let c = ModeChoice()
-        check(c.current(held: .maskShift) == .right, "⇧ held = right")
+        check(c.current(held: .maskShift) == .left, "⇧ held = still left (it nudges)")
         check(c.current(held: .maskControl) == .highlight, "⌃ held = highlight")
         check(c.current(held: .maskAlternate) == .middle, "⌥ held = middle")
         check(c.current(held: .maskCommand) == .left, "⌘ held = still left")
 
         var m = ModeChoice()
-        m.tapped(.middle)
-        check(m.current(held: .maskShift) == .right, "held ⇧ shows over a tapped middle")
-        check(m.current(held: []) == .middle, "released, back to the tapped mode")
+        m.cycle()
+        check(m.current(held: .maskAlternate) == .middle, "held ⌥ shows over a Tab right")
+        check(m.current(held: []) == .right, "released, back to the Tab mode")
     }
 
     static func keyPressWithModifierSticks() {
         var c = ModeChoice()
         c.keyPressed(flags: .maskShift)
-        check(c.mode == .right, "⇧ + key sticks after release")
-        c.keyPressed(flags: [])
-        check(c.mode == .right, "a later plain key keeps it")
+        check(c.mode == .left, "⇧ + key picks no mode")
         c.keyPressed(flags: .maskAlternate)
-        check(c.mode == .middle, "⌥ + key overrides right")
+        check(c.mode == .middle, "⌥ + key sticks after release")
+        c.keyPressed(flags: [])
+        check(c.mode == .middle, "a later plain key keeps it")
         c.keyPressed(flags: .maskControl)
         check(c.mode == .highlight, "⌃ + key overrides middle")
-        c.keyPressed(flags: .maskShift)
-        check(c.mode == .right, "⇧ + key overrides highlight")
+        c.keyPressed(flags: .maskAlternate)
+        check(c.mode == .middle, "⌥ + key overrides highlight")
     }
 
     static func tapsToggleAndExclude() {
         var c = ModeChoice()
-        c.tapped(.right)
-        check(c.mode == .right, "tap ⇧ = right on")
-        c.tapped(.right)
-        check(c.mode == .left, "tap ⇧ again = back to left")
-
-        c.tapped(.middle)
-        check(c.mode == .middle, "tap ⌥ = middle on")
         c.tapped(.highlight)
-        check(c.mode == .highlight, "tap ⌃ overrides middle")
-        c.tapped(.right)
-        check(c.mode == .right, "tap ⇧ overrides highlight")
+        check(c.mode == .highlight, "tap ⌃ = highlight on")
+        c.tapped(.highlight)
+        check(c.mode == .left, "tap ⌃ again = back to left")
+        c.cycle()
+        c.tapped(.highlight)
+        check(c.mode == .highlight, "tap ⌃ overrides a Tab right")
 
         var held = ModeChoice()
         held.keyPressed(flags: .maskControl)
         held.tapped(.highlight)
         check(held.mode == .left, "tap ⌃ turns off a held-⌃ highlight")
+    }
+
+    static func tabCycles() {
+        var c = ModeChoice()
+        c.cycle()
+        check(c.mode == .right, "Tab: left → right")
+        c.cycle()
+        check(c.mode == .middle, "Tab: right → middle")
+        c.cycle()
+        check(c.mode == .left, "Tab: middle → left")
+        c.tapped(.highlight)
+        c.cycle()
+        check(c.mode == .right, "Tab from highlight = right")
     }
 
     static let shiftTap = ModifierTap(codes: [56, 60], flag: .maskShift)

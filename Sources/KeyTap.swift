@@ -18,15 +18,11 @@ final class KeyTap {
     /// When the last tap-triggered click happened (for double/triple-click).
     private var lastClickTapAt: TimeInterval = 0
 
-    /// Lone modifier taps while the grid is open: ⌃ highlight, ⇧ right-click, ⌥ middle-click.
-    /// ⌃ may be tapped with ⇧ held (a right-click highlight start is harmless).
+    /// Lone modifier taps while the grid is open: ⌃ highlight (Tab cycles the button).
+    /// ⌃ may be tapped with ⇧ held.
     private var modifierTaps: [(tap: ModifierTap, action: (OverlayController) -> Void)] = [
         (ModifierTap(codes: [KeyLayout.leftControl, KeyLayout.rightControl], flag: .maskControl,
                      allowed: .maskShift), { $0.modeTapped(.highlight) }),
-        (ModifierTap(codes: [KeyLayout.leftShift, KeyLayout.rightShift], flag: .maskShift),
-         { $0.modeTapped(.right) }),
-        (ModifierTap(codes: [KeyLayout.leftOption, KeyLayout.rightOption], flag: .maskAlternate),
-         { $0.modeTapped(.middle) }),
     ]
 
     /// Key codes whose keyDown we swallowed; swallow the matching keyUp too.
@@ -135,7 +131,7 @@ final class KeyTap {
         }
 
         if flags.contains(.maskCommand) {
-            // ⇧ / ⌥ are allowed (+ ⌘ tap-click = right / middle click); other modifiers aren't.
+            // ⇧ / ⌥ are allowed (⌥ + ⌘ tap-click = middle click); other modifiers aren't.
             let others: CGEventFlags = [.maskControl, .maskSecondaryFn]
             cmdCandidate = flags.intersection(others).isEmpty
             cmdDownAt = now

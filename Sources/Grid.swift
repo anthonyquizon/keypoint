@@ -51,6 +51,27 @@ struct Grid: Equatable {
         return sameAxis < maxHalvings ? arrows + [direction] : nil
     }
 
+    /// `arrows` with their shaded slot moved one slot toward `direction` (⇧ + arrow):
+    /// ↑ ↑ (top quarter) nudged down is ↑ ↓ (the 2nd quarter). Each arrow on that
+    /// axis keeps its place in the order. Nil if that axis has no arrows, or the
+    /// slot is already at that edge of the cell.
+    static func nudge(_ arrows: [Direction], toward direction: Direction) -> [Direction]? {
+        let vertical = direction.isVertical
+        let places = arrows.indices.filter { arrows[$0].isVertical == vertical }
+        guard !places.isEmpty else { return nil }
+        let n = places.count
+        // Slot index (0 = top / left) the halvings land in, as bits, first arrow highest.
+        let k = places.reduce(0) { $0 * 2 + (arrows[$1] == .down || arrows[$1] == .right ? 1 : 0) }
+        let moved = k + (direction == .down || direction == .right ? 1 : -1)
+        guard moved >= 0, moved < 1 << n else { return nil }
+        var out = arrows
+        for (i, place) in places.enumerated() {
+            let high = (moved >> (n - 1 - i)) & 1 == 1
+            out[place] = vertical ? (high ? .down : .up) : (high ? .right : .left)
+        }
+        return out
+    }
+
     /// Where `arrows` land within a cell, for the hint bar: e.g. "top quarter",
     /// "2nd quarter from top · left half". Empty for no arrows.
     static func describe(_ arrows: [Direction]) -> String {

@@ -48,6 +48,7 @@ enum KeyLayout {
     static let delete: CGKeyCode = 51
     static let space: CGKeyCode = 49
     static let returnKey: CGKeyCode = 36
+    static let tab: CGKeyCode = 48
     static let leftCommand: CGKeyCode = 55
     static let rightCommand: CGKeyCode = 54
     static let leftControl: CGKeyCode = 59

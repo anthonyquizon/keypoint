@@ -13,7 +13,7 @@ final class OverlayController {
     private var grid = Grid(rect: .zero)
     private var region: CGRect { grid.rect }
     private var history: [Grid] = []
-    /// Right / middle chosen so far this pick with ⇧ / ⌥.
+    /// Mode chosen so far this pick (Tab cycles right / middle; ⌃ highlight).
     private var choice = ModeChoice()
 
     /// Highlight mode (tap ⌃, or hold it on a press): the first pick sets where a drag starts, the
@@ -58,14 +58,14 @@ final class OverlayController {
         isFinalLevel || Grid.isClickSize(grid.selection(row: 0, col: 0, arrows: pending), size: clickSize)
     }
 
-    /// Button a click would use now: ⇧ / ⌥ held now or pressed earlier = right / middle.
+    /// Button a click would use now: the Tab-chosen one, or middle with ⌥ held.
     var currentButton: Mouse.Button { choice.current(held: held).button }
 
     /// Modifiers held right now, from the last flags-changed event.
     private var held: CGEventFlags = []
 
     /// Click right now at the centre of the current region (or set / finish a
-    /// highlight). `button` overrides the one chosen with ⇧ / ⌥.
+    /// highlight). `button` overrides the chosen one.
     func clickNow(button: Mouse.Button? = nil) {
         guard isActive else { return }
         clearPending()
@@ -132,7 +132,7 @@ final class OverlayController {
         refresh()
     }
 
-    /// A lone tap of ⇧ / ⌃ / ⌥: switch to its mode, or back to left-click if it's already on.
+    /// A lone tap of ⌃: switch to its mode, or back to left-click if it's already on.
     func modeTapped(_ mode: ClickMode) {
         guard isActive else { return }
         choice.tapped(mode)
@@ -149,7 +149,7 @@ final class OverlayController {
     private var pending: [Grid.Direction] = []
 
     func handleKey(_ code: CGKeyCode, flags: CGEventFlags) {
-        // ⇧ / ⌃ / ⌥ held on a press switches to its mode, overriding the current one.
+        // ⌃ / ⌥ held on a press switches to its mode, overriding the current one.
         choice.keyPressed(flags: flags)
         modeChanged()
 
@@ -182,6 +182,20 @@ final class OverlayController {
         case KeyLayout.returnKey:
             // Right-click right now at the centre of the current region.
             clickNow(button: .right)
+        case KeyLayout.tab:
+            // Cycle the button: left → right → middle → left.
+            choice.cycle()
+            modeChanged()
+            refresh()
+        case _ where KeyLayout.arrows[code] != nil && flags.contains(.maskShift):
+            // ⇧ + arrow: move the shaded slot the arrows picked one slot that way
+            // (top quarter → 2nd quarter), within the cell.
+            guard let dir = KeyLayout.arrows[code], let next = Grid.nudge(pending, toward: dir) else {
+                NSSound.beep()   // no arrows on that axis, or already at that edge
+                return
+            }
+            pending = next
+            refresh()
         case _ where KeyLayout.arrows[code] != nil:
             // Arrows then a key: each arrow halves the key's cell again, in
             // order (↑ E = top half, ↑ ← E = top-left quarter, ↑ ↓ E = 2nd quarter).
@@ -224,7 +238,7 @@ final class OverlayController {
 
     // MARK: - Private
 
-    /// Redraw. A ⇧ / ⌃ / ⌥ held right now shows its mode over the chosen one.
+    /// Redraw. A ⌃ / ⌥ held right now shows its mode over the chosen one.
     private func refresh() {
         view.grid = grid
         view.level = history.count
@@ -476,7 +490,7 @@ final class GridView: NSView {
         let stage = isFinal ? "next key \(action)" : "next key zooms"
         let half = pending.isEmpty ? ""
             : " · \(pending.map(\.symbol).joined()) \(Grid.describe(pending))"
-        let s = "Level \(level + 1) · \(stage)\(half) · \(mode) · key = its cell · arrows then key = halve the cell, in order · ⇧ right · ⌥ middle · ⌃ highlight (hold or tap; overrides) · ⌘ click here · space middle · ⏎ right · ⌫ back · esc cancel"
+        let s = "Level \(level + 1) · \(stage)\(half) · \(mode) · key = its cell · arrows then key = halve the cell, in order · ⇥ cycle right / middle / left · ⇧ arrow nudge the shading · ⌥ middle (hold) · ⌃ highlight (hold or tap) · ⌘ click here · space middle · ⏎ right · ⌫ back · esc cancel"
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
             .foregroundColor: NSColor.white,

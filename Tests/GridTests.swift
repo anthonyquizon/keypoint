@@ -38,6 +38,7 @@ struct GridTests {
         arrowsStack()
         arrowsDescribed()
         smallPicksClickAtOnce()
+        nudgeMovesTheSlot()
         buttonTests()
 
         print(failures == 0 ? "OK — \(checks) checks passed" : "\(failures) of \(checks) checks failed")
@@ -209,5 +210,17 @@ struct GridTests {
         // An earlier line counts as backward even when the end is further right.
         r = Grid.inclusiveDrag(from: a, to: CGPoint(x: 300, y: 10), nudge: 4)
         close(r.from.x, 104, "previous line start"); close(r.to.x, 296, "previous line end")
+    }
+
+    static func nudgeMovesTheSlot() {
+        check(Grid.nudge([.up], toward: .down) == [.down], "top half ⇧↓ = bottom half")
+        check(Grid.nudge([.up, .up], toward: .down) == [.up, .down], "top quarter ⇧↓ = 2nd quarter")
+        check(Grid.nudge([.up, .down], toward: .down) == [.down, .up], "2nd quarter ⇧↓ = 3rd quarter")
+        check(Grid.nudge([.up, .left, .down], toward: .down) == [.down, .left, .up],
+              "other axis keeps its place")
+        check(Grid.nudge([.left], toward: .right) == [.right], "left half ⇧→ = right half")
+        check(Grid.nudge([.down, .down], toward: .down) == nil, "bottom quarter can't go lower")
+        check(Grid.nudge([.left], toward: .up) == nil, "no vertical arrows = nothing to nudge")
+        check(Grid.nudge([], toward: .left) == nil, "no arrows = nothing to nudge")
     }
 }

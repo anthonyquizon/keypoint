@@ -34,20 +34,23 @@ sliders. `⌫` from the top of the end pick goes back to picking the start.
 If a selection is so small its cells couldn't fit their labels, the grid grows around it
 (to an 18pt minimum cell) and the cursor stays on what you selected.
 
-The modes — `⇧` right-click, `⌥` middle-click, `⌃` highlight — work the same way: hold the
-modifier on any press, or tap it on its own. Whichever you use last overrides the current
-mode (tap `⌥`, then `⇧F` `J` right-clicks), and tapping the mode that's already on goes back
-to a left click. Leaving highlight drops a picked start.
+`Tab` cycles the button: left → right → middle → left. `⌃` highlight works by holding it on
+any press or tapping it on its own (tap again for left-click), and holding `⌥` on a press
+middle-clicks. Whichever you use last overrides the current mode. Leaving highlight drops a
+picked start.
+
+Arrows shaded the wrong slot? `⇧` + an arrow nudges the shading one slot that way within
+the cell: `↑` `↑` (top quarter) then `⇧↓` is the 2nd quarter. It only moves along an axis
+you've already pressed arrows on.
 
 | Key | Action |
 |---|---|
 | tap `⌘` | show the grid |
-| tap `⌘` again | click where the mouse already is — so double-tap `⌘` clicks without moving it (hold `⇧` to right-click, `⌥` to middle-click) |
+| tap `⌘` again | click where the mouse already is — so double-tap `⌘` clicks without moving it (with the `Tab`-chosen button; hold `⌥` to middle-click) |
 | triple-tap `⌘` | double-click there (selects a word) — a 4th tap makes it a triple-click |
-| hold `⇧` on any press | right-click instead of left-click |
+| `Tab` | cycle the button: left → right → middle → left |
 | hold `⌥` on any press | middle-click instead of left-click (e.g. open a link in a new tab) |
-| tap `⇧` | right-click mode (tap again for left-click) |
-| tap `⌥` | middle-click mode (tap again for left-click) |
+| `⇧` + arrow | nudge the arrows' shaded slot one slot that way (`↑` `↑` `⇧↓` = 2nd quarter) |
 | tap `⌃` | highlight mode: pick a start, then an end, and Keypoint drags between them (tap again to turn off) |
 | hold `⌃` on any press | turn highlight mode on from that press (e.g. `⌃F` `J` sets the start) |
 | a key | zoom into its cell (clicks its centre on the last level) |
@@ -119,7 +122,7 @@ for large text, or set it to 0 for exact points.
 ## Project layout
 
 - `Sources/KeyLayout.swift` — grid keys and key codes
-- `Sources/KeyTap.swift` — global key hook (⌘-tap detection, swallowing keys while active)
+- `Sources/KeyTap.swift` — global key hook (⌘ / ⌃ tap detection, swallowing keys while active)
 - `Sources/Grid.swift` — grid maths: cells, minimum cell size, arrow halves
 - `Sources/Overlay.swift` — selection logic, clicking, drawing the grid
 - `Sources/main.swift` — menu bar item and permission handling

@@ -17,24 +17,38 @@ enum ClickMode {
         }
     }
 
-    /// The mode a modifier picks: ⇧ right, ⌃ highlight, ⌥ middle (⇧ ⌃ ⌥ order if several).
+    /// The mode a held modifier picks: ⌃ highlight, ⌥ middle (⌃ first if both).
+    /// (⇧ is for nudging the box, so it picks no mode.)
     static func picked(by flags: CGEventFlags) -> ClickMode? {
-        if flags.contains(.maskShift) { return .right }
         if flags.contains(.maskControl) { return .highlight }
         if flags.contains(.maskAlternate) { return .middle }
         return nil
     }
+
+    /// The next button mode for Tab: left → right → middle → left (highlight → right).
+    var cycled: ClickMode {
+        switch self {
+        case .left, .highlight: return .right
+        case .right: return .middle
+        case .middle: return .left
+        }
+    }
 }
 
-/// The mode for the current pick. Any ⇧ / ⌃ / ⌥ overrides whatever mode is on:
-/// held on a key press it switches to its mode (and that sticks); a lone tap
-/// switches to its mode, or back to a left click if that mode was already on.
+/// The mode for the current pick. Tab cycles left → right → middle. A ⌃ / ⌥
+/// held on a key press switches to its mode (and that sticks); a lone ⌃ tap
+/// switches to highlight, or back to a left click if it was already on.
 struct ModeChoice {
     private(set) var mode = ClickMode.left
 
     /// A key was pressed with these modifiers held.
     mutating func keyPressed(flags: CGEventFlags) {
         if let m = ClickMode.picked(by: flags) { mode = m }
+    }
+
+    /// Tab: the next of left / right / middle.
+    mutating func cycle() {
+        mode = mode.cycled
     }
 
     /// A lone tap of the modifier for `m`.
