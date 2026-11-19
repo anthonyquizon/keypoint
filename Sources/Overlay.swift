@@ -44,6 +44,20 @@ final class OverlayController {
     /// The next key press clicks rather than zooming.
     private var isFinalLevel: Bool { history.count + 1 >= maxLevels }
 
+    /// A key's selection at most this many points both ways clicks at once
+    /// instead of zooming (so a few arrows can finish a pick early).
+    /// Change with:  defaults write local.keypoint clickSize -float 24
+    var clickSize: CGFloat {
+        let v = UserDefaults.standard.object(forKey: "clickSize") as? Double
+        return CGFloat(v ?? 24)
+    }
+
+    /// The next key clicks: the last level, or the arrows make its pick small enough.
+    /// (Cells are all the same size, so any one tells.)
+    private var nextKeyClicks: Bool {
+        isFinalLevel || Grid.isClickSize(grid.selection(row: 0, col: 0, arrows: pending), size: clickSize)
+    }
+
     /// Button a click would use now: ⇧ / ⌥ held now or pressed earlier = right / middle.
     var currentButton: Mouse.Button { choice.current(held: held).button }
 
@@ -131,10 +145,8 @@ final class OverlayController {
         if !dragMode { dragStart = nil }
     }
 
-    /// An arrow pressed before a key: the next key picks that half of its cell.
-    private var pending: Grid.Direction?
-    /// How many times `pending` was pressed in a row: each repeat halves again.
-    private var pendingDepth = 1
+    /// Arrows pressed before a key, in order: each halves the key's cell again.
+    private var pending: [Grid.Direction] = []
 
     func handleKey(_ code: CGKeyCode, flags: CGEventFlags) {
         // ⇧ / ⌃ / ⌥ held on a press switches to its mode, overriding the current one.
@@ -146,9 +158,9 @@ final class OverlayController {
             clearPending()
             cancel()
         case KeyLayout.delete:
-            if pending != nil {
-                // Undo one press of the arrow: a quarter goes back to a half, a half to none.
-                if pendingDepth > 1 { pendingDepth -= 1 } else { clearPending() }
+            if !pending.isEmpty {
+                // Undo the last arrow.
+                pending.removeLast()
                 refresh()
                 return
             }
@@ -171,36 +183,32 @@ final class OverlayController {
             // Right-click right now at the centre of the current region.
             clickNow(button: .right)
         case _ where KeyLayout.arrows[code] != nil:
-            // An arrow then a key: that half of the key's cell (↑ E = top of E).
-            // The same arrow again halves the half (↑ ↑ E = top quarter); a
-            // different arrow replaces it.
-            let dir = KeyLayout.arrows[code]
-            if dir == pending {
-                pendingDepth = min(pendingDepth + 1, Grid.maxHalvings)
-            } else {
-                pending = dir
-                pendingDepth = 1
+            // Arrows then a key: each arrow halves the key's cell again, in
+            // order (↑ E = top half, ↑ ← E = top-left quarter, ↑ ↓ E = 2nd quarter).
+            guard let dir = KeyLayout.arrows[code], let next = Grid.push(dir, onto: pending) else {
+                NSSound.beep()   // that axis is already down to an eighth
+                return
             }
+            pending = next
             refresh()
         default:
             guard let pos = KeyLayout.position(of: code) else {
                 NSSound.beep()
                 return
             }
-            let (half, depth) = (pending, pendingDepth)
+            let arrows = pending
             clearPending()
-            enter(Grid(rect: grid.selection(row: pos.row, col: pos.col, half: half, depth: depth)))
+            enter(Grid(rect: grid.selection(row: pos.row, col: pos.col, arrows: arrows)))
         }
     }
 
     private func clearPending() {
-        pending = nil
-        pendingDepth = 1
+        pending = []
     }
 
     /// Move to `next`: click at its focus on the last level, otherwise zoom into it.
     private func enter(_ next: Grid) {
-        let clicks = isFinalLevel
+        let clicks = isFinalLevel || Grid.isClickSize(next.rect, size: clickSize)
         history.append(grid)
         grid = next
 
@@ -220,11 +228,10 @@ final class OverlayController {
     private func refresh() {
         view.grid = grid
         view.level = history.count
-        view.isFinal = isFinalLevel
+        view.isFinal = nextKeyClicks
         let shown = choice.current(held: held)
         view.button = shown.button
         view.pending = pending
-        view.pendingDepth = pendingDepth
         view.dragMode = shown == .highlight
         view.dragStart = dragStart
         view.needsDisplay = true
@@ -358,8 +365,7 @@ final class GridView: NSView {
     var level = 0
     var isFinal = false
     var button = Mouse.Button.left
-    var pending: Grid.Direction?
-    var pendingDepth = 1
+    var pending: [Grid.Direction] = []
     var dragMode = false
     var dragStart: CGPoint?
 
@@ -398,12 +404,12 @@ final class GridView: NSView {
         let home = grid.cell(row: KeyLayout.homeRow, col: 0)
         CGRect(x: region.minX, y: home.minY, width: region.width, height: home.height).fill()
 
-        // Arrow pressed, waiting for a key: shade that half of every cell.
-        if let dir = pending {
+        // Arrows pressed, waiting for a key: shade where they land in every cell.
+        if !pending.isEmpty {
             (modeTint ?? .systemYellow).withAlphaComponent(0.25).setFill()
             for r in 0..<KeyLayout.rowCount {
                 for c in 0..<KeyLayout.columnCount {
-                    grid.selection(row: r, col: c, half: dir, depth: pendingDepth).fill()
+                    grid.selection(row: r, col: c, arrows: pending).fill()
                 }
             }
         }
@@ -468,16 +474,9 @@ final class GridView: NSView {
             : button == .right ? "RIGHT CLICK" : button == .middle ? "MIDDLE CLICK" : "left click"
         let action = !dragMode ? "clicks" : dragStart == nil ? "sets start" : "highlights"
         let stage = isFinal ? "next key \(action)" : "next key zooms"
-        let part = ["half", "quarter", "eighth"][min(pendingDepth, 3) - 1]
-        let half = pending.map { d -> String in
-            switch d {
-            case .up: return " · ↑ top \(part)"
-            case .down: return " · ↓ bottom \(part)"
-            case .left: return " · ← left \(part)"
-            case .right: return " · → right \(part)"
-            }
-        } ?? ""
-        let s = "Level \(level + 1) · \(stage)\(half) · \(mode) · key = its cell · arrow then key = that half (again = half again) · ⇧ right · ⌥ middle · ⌃ highlight (hold or tap; overrides) · ⌘ click here · space middle · ⏎ right · ⌫ back · esc cancel"
+        let half = pending.isEmpty ? ""
+            : " · \(pending.map(\.symbol).joined()) \(Grid.describe(pending))"
+        let s = "Level \(level + 1) · \(stage)\(half) · \(mode) · key = its cell · arrows then key = halve the cell, in order · ⇧ right · ⌥ middle · ⌃ highlight (hold or tap; overrides) · ⌘ click here · space middle · ⏎ right · ⌫ back · esc cancel"
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
             .foregroundColor: NSColor.white,

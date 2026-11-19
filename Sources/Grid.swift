@@ -29,18 +29,47 @@ struct Grid: Equatable {
                height: rowEdges[row + 1] - rowEdges[row])
     }
 
-    /// What one key press selects: that key's cell, or — if an arrow was
-    /// pressed first — the half of it toward the arrow (↑ E = top half of E).
-    /// The same arrow `depth` times halves again each time (↑ ↑ E = top quarter).
-    func selection(row: Int, col: Int, half direction: Direction? = nil, depth: Int = 1) -> CGRect {
-        var c = cell(row: row, col: col)
-        guard let direction else { return c }
-        for _ in 0..<max(1, depth) { c = Grid.half(of: c, toward: direction) }
-        return c
+    /// What one key press selects: that key's cell, halved once per arrow
+    /// pressed before it, in order (↑ E = top half of E, ↑ ← E = its top-left
+    /// quarter, ↑ ↓ E = the second quarter from the top).
+    func selection(row: Int, col: Int, arrows: [Direction] = []) -> CGRect {
+        arrows.reduce(cell(row: row, col: col)) { Grid.half(of: $0, toward: $1) }
     }
 
-    /// Most times one arrow can be repeated before a key (3 = an eighth).
-    static let maxHalvings = 3
+    /// Most arrows per axis before a key (4 = a sixteenth of the cell).
+    static let maxHalvings = 4
+
+    /// A selection this small (≤ `size` points both ways) is clicked at once:
+    /// zooming into it couldn't get any more precise.
+    static func isClickSize(_ r: CGRect, size: CGFloat) -> Bool {
+        r.width <= size && r.height <= size
+    }
+
+    /// `arrows` with `direction` pushed on, or nil if its axis is already at `maxHalvings`.
+    static func push(_ direction: Direction, onto arrows: [Direction]) -> [Direction]? {
+        let sameAxis = arrows.filter { $0.isVertical == direction.isVertical }.count
+        return sameAxis < maxHalvings ? arrows + [direction] : nil
+    }
+
+    /// Where `arrows` land within a cell, for the hint bar: e.g. "top quarter",
+    /// "2nd quarter from top · left half". Empty for no arrows.
+    static func describe(_ arrows: [Direction]) -> String {
+        func axis(_ steps: [Direction], first: String, last: String) -> String? {
+            guard !steps.isEmpty else { return nil }
+            let n = steps.count, slots = 1 << n
+            // Index of the slot (0 = top / left) the halvings land in.
+            let k = steps.reduce(0) { $0 * 2 + ($1 == .down || $1 == .right ? 1 : 0) }
+            let size = ["half", "quarter", "eighth", "sixteenth"][n - 1]
+            if k == 0 { return "\(first) \(size)" }
+            if k == slots - 1 { return "\(last) \(size)" }
+            let d = (k + 1) % 10
+            let suffix = (11...13).contains(k + 1) || d == 0 || d > 3 ? "th" : ["st", "nd", "rd"][d - 1]
+            return "\(k + 1)\(suffix) \(size) from \(first)"
+        }
+        return [axis(arrows.filter(\.isVertical), first: "top", last: "bottom"),
+                axis(arrows.filter { !$0.isVertical }, first: "left", last: "right")]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
 
     /// This grid, grown around its centre (kept inside `bounds`) so every cell
     /// is at least `minCell` and every label fits. `focus` stays put.
@@ -62,7 +91,18 @@ struct Grid: Equatable {
     }
 
     /// An arrow key's direction.
-    enum Direction: Equatable { case up, down, left, right }
+    enum Direction: Equatable {
+        case up, down, left, right
+        var isVertical: Bool { self == .up || self == .down }
+        var symbol: String {
+            switch self {
+            case .up: return "↑"
+            case .down: return "↓"
+            case .left: return "←"
+            case .right: return "→"
+            }
+        }
+    }
 
     /// The half of `rect` toward `direction` (view space: up = smaller y).
     /// An arrow then a key (↑ E) selects that half of the key's cell.

@@ -35,6 +35,9 @@ struct GridTests {
         arrowHalves()
         inclusiveDragWidensOutward()
         repeatedArrowHalvesAgain()
+        arrowsStack()
+        arrowsDescribed()
+        smallPicksClickAtOnce()
         buttonTests()
 
         print(failures == 0 ? "OK — \(checks) checks passed" : "\(failures) of \(checks) checks failed")
@@ -68,7 +71,7 @@ struct GridTests {
         let g = Grid(rect: rect)
         let e = g.cell(row: 1, col: 2)
         for d: Grid.Direction in [.up, .down, .left, .right] {
-            check(g.selection(row: 1, col: 2, half: d) == Grid.half(of: e, toward: d), "\(d) E = that half of E")
+            check(g.selection(row: 1, col: 2, arrows: [d]) == Grid.half(of: e, toward: d), "\(d) E = that half of E")
         }
     }
 
@@ -139,13 +142,55 @@ struct GridTests {
     static func repeatedArrowHalvesAgain() {
         let g = Grid(rect: rect)
         let e = g.cell(row: 1, col: 2)   // 100 × 100 at (200, 100)
-        check(g.selection(row: 1, col: 2, half: .up, depth: 1) == Grid.half(of: e, toward: .up), "depth 1 = half")
-        check(g.selection(row: 1, col: 2, half: .up, depth: 2)
+        check(g.selection(row: 1, col: 2, arrows: [.up]) == Grid.half(of: e, toward: .up), "one arrow = half")
+        check(g.selection(row: 1, col: 2, arrows: [.up, .up])
               == CGRect(x: 200, y: 100, width: 100, height: 25), "↑ ↑ E = top quarter")
-        check(g.selection(row: 1, col: 2, half: .down, depth: 2)
+        check(g.selection(row: 1, col: 2, arrows: [.down, .down])
               == CGRect(x: 200, y: 175, width: 100, height: 25), "↓ ↓ E = bottom quarter")
-        check(g.selection(row: 1, col: 2, half: .right, depth: 3)
+        check(g.selection(row: 1, col: 2, arrows: [.right, .right, .right])
               == CGRect(x: 287.5, y: 100, width: 12.5, height: 100), "→ → → E = right eighth")
+    }
+
+    static func arrowsStack() {
+        let g = Grid(rect: rect)   // E = 100 × 100 at (200, 100)
+        check(g.selection(row: 1, col: 2, arrows: [.up, .left])
+              == CGRect(x: 200, y: 100, width: 50, height: 50), "↑ ← E = top-left quarter")
+        check(g.selection(row: 1, col: 2, arrows: [.up, .down])
+              == CGRect(x: 200, y: 125, width: 100, height: 25), "↑ ↓ E = 2nd quarter from top")
+        check(g.selection(row: 1, col: 2, arrows: [.down, .up, .down])
+              == CGRect(x: 200, y: 162.5, width: 100, height: 12.5), "↓ ↑ ↓ E = 6th eighth")
+        check(g.selection(row: 1, col: 2, arrows: [.up, .left])
+              == g.selection(row: 1, col: 2, arrows: [.left, .up]), "axes don't depend on order")
+
+        check(Grid.push(.up, onto: [.up, .down]) == [.up, .down, .up], "push stacks")
+        check(Grid.push(.left, onto: [.up, .down, .up]) == [.up, .down, .up, .left], "other axis still free")
+        check(Grid.push(.down, onto: [.up, .down, .up]) == [.up, .down, .up, .down], "4th arrow = a sixteenth")
+        check(Grid.push(.down, onto: [.up, .down, .up, .down]) == nil, "an axis stops at a sixteenth")
+    }
+
+    static func smallPicksClickAtOnce() {
+        check(Grid.isClickSize(CGRect(x: 0, y: 0, width: 20, height: 24), size: 24), "≤ size both ways clicks")
+        check(!Grid.isClickSize(CGRect(x: 0, y: 0, width: 20, height: 30), size: 24), "too tall zooms")
+        check(!Grid.isClickSize(CGRect(x: 0, y: 0, width: 30, height: 10), size: 24), "too wide zooms")
+        // A 1920 × 1080 screen: an F cell is 192 × 270; ← ← ← ↑ ↑ ↑ ↑ gets it to 24 × ~17.
+        let g = Grid(rect: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        let pick = g.selection(row: 2, col: 3, arrows: [.left, .left, .left, .up, .up, .up, .up])
+        check(Grid.isClickSize(pick, size: 24), "enough arrows on level 1 click at once")
+    }
+
+    static func arrowsDescribed() {
+        check(Grid.describe([]) == "", "no arrows")
+        check(Grid.describe([.up]) == "top half", "↑")
+        check(Grid.describe([.down, .down]) == "bottom quarter", "↓ ↓")
+        check(Grid.describe([.up, .down]) == "2nd quarter from top", "↑ ↓")
+        check(Grid.describe([.down, .up]) == "3rd quarter from top", "↓ ↑")
+        check(Grid.describe([.up, .left]) == "top half · left half", "↑ ←")
+        check(Grid.describe([.right, .left, .right]) == "6th eighth from left", "→ ← →")
+        check(Grid.describe([.up, .up, .down, .up]) == "3rd sixteenth from top", "↑ ↑ ↓ ↑")
+        check(Grid.describe([.down, .up, .down, .down]) == "12th sixteenth from top", "↓ ↑ ↓ ↓")
+        check(Grid.describe([.down, .down, .down, .down]) == "bottom sixteenth", "↓ ×4")
+        check(Grid.describe([.down, .down, .down, .up]) == "15th sixteenth from top", "↓ ↓ ↓ ↑")
+        check(Grid.describe([.down, .up, .up, .down]) == "10th sixteenth from top", "↓ ↑ ↑ ↓")
     }
 
     static func inclusiveDragWidensOutward() {
