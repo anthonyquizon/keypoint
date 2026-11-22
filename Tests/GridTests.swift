@@ -39,6 +39,7 @@ struct GridTests {
         arrowsDescribed()
         smallPicksClickAtOnce()
         nudgeMovesTheSlot()
+        shiftSlidesTheGrid()
         buttonTests()
 
         print(failures == 0 ? "OK — \(checks) checks passed" : "\(failures) of \(checks) checks failed")
@@ -210,6 +211,41 @@ struct GridTests {
         // An earlier line counts as backward even when the end is further right.
         r = Grid.inclusiveDrag(from: a, to: CGPoint(x: 300, y: 10), nudge: 4)
         close(r.from.x, 104, "previous line start"); close(r.to.x, 296, "previous line end")
+    }
+
+    static func shiftSlidesTheGrid() {
+        let screen = CGRect(x: 0, y: 0, width: 1000, height: 400)
+        let g = Grid(rect: CGRect(x: 300, y: 100, width: 100, height: 100))   // cells 10 × 25
+        check(g.shifted(toward: .right, within: screen)?.rect == CGRect(x: 310, y: 100, width: 100, height: 100),
+              "⇧→ slides one cell right")
+        check(g.shifted(toward: .up, within: screen)?.rect == CGRect(x: 300, y: 75, width: 100, height: 100),
+              "⇧↑ slides one cell up")
+        check(g.shifted(toward: .down, within: screen)?.focus == CGPoint(x: 350, y: 175), "focus moves with it")
+        let edge = Grid(rect: CGRect(x: 5, y: 0, width: 100, height: 100))
+        check(edge.shifted(toward: .left, within: screen)?.rect.minX == 0, "stops at the screen edge")
+        check(edge.shifted(toward: .up, within: screen) == nil, "can't go past the edge")
+        check(Grid(rect: screen).shifted(toward: .right, within: screen) == nil, "whole screen can't slide")
+        // Top level: cells slide half a cell and wrap around (cells 100 × 100).
+        let top = Grid(rect: screen)
+        let left = top.slid(toward: .left)
+        check(left.rect == screen, "the grid still fills the screen")
+        check(left.cell(row: 0, col: 4) == CGRect(x: 350, y: 0, width: 100, height: 100), "cells move half a cell")
+        check(left.pieces(of: left.virtualCell(row: 0, col: 0)) == [CGRect(x: 950, y: 0, width: 50, height: 100),
+                                                                     CGRect(x: 0, y: 0, width: 50, height: 100)],
+              "Q's left half wraps to the right edge")
+        check(left.cell(row: 0, col: 0) == CGRect(x: 0, y: 0, width: 50, height: 100), "a tie picks the home side")
+        let twice = left.slid(toward: .left)
+        check(twice.cell(row: 0, col: 0) == CGRect(x: 900, y: 0, width: 100, height: 100),
+              "a whole cell left puts Q at the right edge")
+        check(twice.cell(row: 0, col: 1) == CGRect(x: 0, y: 0, width: 100, height: 100), "and W at the left")
+        var round = top
+        for _ in 0..<20 { round = round.slid(toward: .right) }
+        check(round == top, "a whole row's turn comes back to the start")
+        check(top.slid(toward: .right).slid(toward: .left) == top, "and slides back")
+        let up = top.slid(toward: .up).slid(toward: .left)
+        check(up.pieces(of: up.virtualCell(row: 0, col: 0)).count == 4, "a corner cell can split four ways")
+        check(up.selection(row: 1, col: 1, arrows: [.down]) == CGRect(x: 50, y: 100, width: 100, height: 50),
+              "arrows halve the slid cell")
     }
 
     static func nudgeMovesTheSlot() {

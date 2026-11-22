@@ -18,7 +18,7 @@ enum ClickMode {
     }
 
     /// The mode a held modifier picks: ⌃ highlight, ⌥ middle (⌃ first if both).
-    /// (⇧ is for nudging the box, so it picks no mode.)
+    /// (⇧ is for halving the cell, so it picks no mode.)
     static func picked(by flags: CGEventFlags) -> ClickMode? {
         if flags.contains(.maskControl) { return .highlight }
         if flags.contains(.maskAlternate) { return .middle }

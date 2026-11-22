@@ -14,17 +14,24 @@ A S D F G H J K L ;
 Z X C V B N M , . /
 ```
 
-Each level takes **one key press**: press a key to zoom into its cell (e.g. `F`). The
-grid redraws inside that cell, and on the last level (2 by default) the press **clicks**
-the cell's centre. So a normal click is two keys: `F` `J`.
+Press a key to **click** the centre of its cell (e.g. `F`).
 
-For more precision, press **arrows first**: each one halves the next key's cell again, in
-order (`↑` `E` = top half of `E`, `↑` `←` `E` = its top-left quarter, `↑` `↑` `E` = top
-quarter, `↑` `↓` `E` = the second quarter from the top). Up to four per axis (a
-sixteenth); `⌫` undoes the last arrow. If the arrows make a pick small enough (80pt or less
-either way — `defaults write local.keypoint clickSize -float 80`), the key clicks its centre right away
-in the current mode instead of zooming another level. The hint bar shows whether the next key *zooms* or
-*clicks*.
+For more precision, press **`⇧` + arrows first**: each one halves the next key's cell again,
+in order (`⇧↑` `E` = top half of `E`, `⇧↑` `⇧←` `E` = its top-left quarter, `⇧↑` `⇧↑` `E` =
+top quarter, `⇧↑` `⇧↓` `E` = the second quarter from the top). Up to four per axis (a
+sixteenth); `⌫` undoes the last one.
+
+**Plain arrows move things.** On an axis you've halved, an arrow moves the shaded slot one
+slot that way within the cell: `⇧↑` `⇧↑` (top quarter) then `↓` is the 2nd quarter. On an axis
+you haven't, it slides the whole grid half a cell that way, wrapping around: what goes off one
+side comes back in on the other, so you can keep going. A cell split across the edge is picked
+by its bigger piece (on a tie, the piece on the key's own side). Sliding leaves the mouse alone.
+
+Want to drill down instead? `defaults write local.keypoint levels -int 2` makes the first key
+zoom into its cell and the second click. There, a plain arrow slides the zoomed box one of its
+cells that way (stopping at the screen edge), and if the `⇧` + arrows make a pick small enough
+(40pt or less either way — `defaults write local.keypoint clickSize -float 80`), the key clicks
+at once instead of zooming. The hint bar shows whether the next key *zooms* or *clicks*.
 
 To **highlight** (or drag anything), tap `⌃` while the grid is up (or hold it on any press). Your next pick marks
 the start instead of clicking; the grid resets to the whole screen, you pick the end, and
@@ -39,10 +46,6 @@ any press or tapping it on its own (tap again for left-click), and holding `⌥`
 middle-clicks. Whichever you use last overrides the current mode. Leaving highlight drops a
 picked start.
 
-Arrows shaded the wrong slot? `⇧` + an arrow nudges the shading one slot that way within
-the cell: `↑` `↑` (top quarter) then `⇧↓` is the 2nd quarter. It only moves along an axis
-you've already pressed arrows on.
-
 | Key | Action |
 |---|---|
 | tap `⌘` | show the grid |
@@ -50,14 +53,14 @@ you've already pressed arrows on.
 | triple-tap `⌘` | double-click there (selects a word) — a 4th tap makes it a triple-click |
 | `Tab` | cycle the button: left → right → middle → left |
 | hold `⌥` on any press | middle-click instead of left-click (e.g. open a link in a new tab) |
-| `⇧` + arrow | nudge the arrows' shaded slot one slot that way (`↑` `↑` `⇧↓` = 2nd quarter) |
+| arrow | move the shaded slot one slot that way (`⇧↑` `⇧↑` `↓` = 2nd quarter); on an axis not halved, slide the grid half a cell that way, wrapping |
 | tap `⌃` | highlight mode: pick a start, then an end, and Keypoint drags between them (tap again to turn off) |
 | hold `⌃` on any press | turn highlight mode on from that press (e.g. `⌃F` `J` sets the start) |
-| a key | zoom into its cell (clicks its centre on the last level) |
-| arrows, then a key | each arrow halves the key's cell again, in order: `↑` `E` = top half, `↑` `←` `E` = top-left quarter, `↑` `↓` `E` = 2nd quarter from the top (up to a sixteenth per axis; a pick ≤ 80pt wide or tall clicks its centre at once) |
+| a key | click its cell's centre (with `levels` 2 or more, zoom into it until the last level) |
+| `⇧` + arrows, then a key | each halves the key's cell again, in order: `⇧↑` `E` = top half, `⇧↑` `⇧←` `E` = top-left quarter, `⇧↑` `⇧↓` `E` = 2nd quarter from the top (up to a sixteenth per axis) |
 | `Space` | middle-click now at the centre of the current box |
 | `Return` | right-click now at the centre of the current box |
-| `⌫` | undo the last arrow press, or go back a level |
+| `⌫` | undo the last `⇧` + arrow, or go back a level |
 | `Esc` | cancel |
 
 Keys are matched by physical position, so the grid works the same on Dvorak, Colemak,
@@ -111,7 +114,7 @@ project needed).
 ## Settings
 
 ```sh
-defaults write local.keypoint levels -int 2   # key presses per click (default 2)
+defaults write local.keypoint levels -int 2   # key presses per click (default 1: arrows narrow, a key clicks)
 defaults write local.keypoint highlightNudge -float 4   # points each highlight end moves outward
 ```
 

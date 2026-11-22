@@ -23,10 +23,11 @@ final class OverlayController {
     private var dragStart: CGPoint?
 
     /// Number of key presses (levels) before the click fires.
-    /// Change with:  defaults write local.keypoint levels -int 3
+    /// 1 (the default) = no drilling down: arrows narrow the pick, a key clicks.
+    /// Change with:  defaults write local.keypoint levels -int 2
     var maxLevels: Int {
         let v = UserDefaults.standard.integer(forKey: "levels")
-        return v > 0 ? v : 2
+        return v > 0 ? v : 1
     }
 
     /// How far (points) each end of a highlight moves outward so the characters
@@ -53,9 +54,9 @@ final class OverlayController {
     }
 
     /// The next key clicks: the last level, or the arrows make its pick small enough.
-    /// (Cells are all the same size, so any one tells.)
+    /// (Cells are all the same size before wrapping, so any one tells.)
     private var nextKeyClicks: Bool {
-        isFinalLevel || Grid.isClickSize(grid.selection(row: 0, col: 0, arrows: pending), size: clickSize)
+        isFinalLevel || Grid.isClickSize(grid.virtualSelection(row: 0, col: 0, arrows: pending), size: clickSize)
     }
 
     /// Button a click would use now: the Tab-chosen one, or middle with ⌥ held.
@@ -188,22 +189,38 @@ final class OverlayController {
             modeChanged()
             refresh()
         case _ where KeyLayout.arrows[code] != nil && flags.contains(.maskShift):
-            // ⇧ + arrow: move the shaded slot the arrows picked one slot that way
-            // (top quarter → 2nd quarter), within the cell.
-            guard let dir = KeyLayout.arrows[code], let next = Grid.nudge(pending, toward: dir) else {
-                NSSound.beep()   // no arrows on that axis, or already at that edge
+            // ⇧ + arrows then a key: each ⇧ + arrow halves the key's cell again, in
+            // order (⇧↑ E = top half, ⇧↑ ⇧← E = top-left quarter, ⇧↑ ⇧↓ E = 2nd quarter).
+            guard let dir = KeyLayout.arrows[code], let next = Grid.push(dir, onto: pending) else {
+                NSSound.beep()   // that axis is already down to a sixteenth
                 return
             }
             pending = next
             refresh()
         case _ where KeyLayout.arrows[code] != nil:
-            // Arrows then a key: each arrow halves the key's cell again, in
-            // order (↑ E = top half, ↑ ← E = top-left quarter, ↑ ↓ E = 2nd quarter).
-            guard let dir = KeyLayout.arrows[code], let next = Grid.push(dir, onto: pending) else {
-                NSSound.beep()   // that axis is already down to an eighth
+            // A plain arrow moves things: the shaded slot one slot that way within the
+            // cell (top quarter → 2nd quarter) if that axis is halved, otherwise the grid.
+            guard let dir = KeyLayout.arrows[code] else { return }
+            if pending.contains(where: { $0.isVertical == dir.isVertical }) {
+                guard let next = Grid.nudge(pending, toward: dir) else {
+                    NSSound.beep()   // the slot is already at that edge of the cell
+                    return
+                }
+                pending = next
+                refresh()
                 return
             }
-            pending = next
+            // Slide the whole grid one cell that way (when the target sits just past
+            // the box's edge). ⌫ still goes back a level. On the top level the grid
+            // fills the screen, so its cells slide half a cell instead, wrapping: what
+            // goes off one side comes in on the other.
+            let top = history.isEmpty
+            guard let next = top ? grid.slid(toward: dir) : grid.shifted(toward: dir, within: view.bounds) else {
+                NSSound.beep()   // already at that edge
+                return
+            }
+            grid = next
+            if !top { moveCursor(to: global(grid.focus)) }   // the top level leaves the mouse alone
             refresh()
         default:
             guard let pos = KeyLayout.position(of: code) else {
@@ -415,8 +432,10 @@ final class GridView: NSView {
 
         // Home row tint (A S D F … ;) so you can orient quickly.
         NSColor.systemBlue.withAlphaComponent(0.10).setFill()
-        let home = grid.cell(row: KeyLayout.homeRow, col: 0)
-        CGRect(x: region.minX, y: home.minY, width: region.width, height: home.height).fill()
+        let home = grid.virtualCell(row: KeyLayout.homeRow, col: 0)
+        for piece in grid.pieces(of: CGRect(x: region.minX, y: home.minY, width: region.width, height: home.height)) {
+            piece.fill()
+        }
 
         // Arrows pressed, waiting for a key: shade where they land in every cell.
         if !pending.isEmpty {
@@ -430,11 +449,16 @@ final class GridView: NSView {
 
         // Grid lines.
         let lines = NSBezierPath()
-        for x in grid.columnEdges.dropFirst().dropLast() {
+        // Each cell's left / top edge, wrapped (the one landing on the region's edge is skipped).
+        for c in 0..<KeyLayout.columnCount {
+            let x = grid.pieces(of: grid.virtualCell(row: 0, col: c))[0].minX
+            guard x - region.minX > 0.5 else { continue }
             lines.move(to: CGPoint(x: x, y: region.minY))
             lines.line(to: CGPoint(x: x, y: region.maxY))
         }
-        for y in grid.rowEdges.dropFirst().dropLast() {
+        for r in 0..<KeyLayout.rowCount {
+            let y = grid.pieces(of: grid.virtualCell(row: r, col: 0))[0].minY
+            guard y - region.minY > 0.5 else { continue }
             lines.move(to: CGPoint(x: region.minX, y: y))
             lines.line(to: CGPoint(x: region.maxX, y: y))
         }
@@ -490,7 +514,7 @@ final class GridView: NSView {
         let stage = isFinal ? "next key \(action)" : "next key zooms"
         let half = pending.isEmpty ? ""
             : " · \(pending.map(\.symbol).joined()) \(Grid.describe(pending))"
-        let s = "Level \(level + 1) · \(stage)\(half) · \(mode) · key = its cell · arrows then key = halve the cell, in order · ⇥ cycle right / middle / left · ⇧ arrow nudge the shading · ⌥ middle (hold) · ⌃ highlight (hold or tap) · ⌘ click here · space middle · ⏎ right · ⌫ back · esc cancel"
+        let s = "Level \(level + 1) · \(stage)\(half) · \(mode) · key = its cell · ⇧ arrows then key = halve the cell, in order · arrows move the shading (or slide the grid) · ⇥ cycle right / middle / left · ⌥ middle (hold) · ⌃ highlight (hold or tap) · ⌘ click here · space middle · ⏎ right · ⌫ back · esc cancel"
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
             .foregroundColor: NSColor.white,

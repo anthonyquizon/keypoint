@@ -10,9 +10,13 @@ struct Grid: Equatable {
     /// What was actually selected: where the cursor goes and where Space
     /// clicks. The centre of `rect` unless `legible` grew the grid around it.
     private(set) var focus: CGPoint
+    /// How far the cells are slid (top-level ⇧ + arrow), wrapping around: a cell
+    /// pushed off one side comes back in on the other. Kept within 0..<width / height.
+    let offset: CGPoint
 
-    init(rect: CGRect) {
+    init(rect: CGRect, offset: CGPoint = .zero) {
         self.rect = rect
+        self.offset = CGPoint(x: Grid.wrap(offset.x, rect.width), y: Grid.wrap(offset.y, rect.height))
         focus = CGPoint(x: rect.midX, y: rect.midY)
         columnEdges = Grid.edges(count: KeyLayout.columnCount, from: rect.minX, length: rect.width)
         rowEdges = Grid.edges(count: KeyLayout.rowCount, from: rect.minY, length: rect.height)
@@ -23,17 +27,61 @@ struct Grid: Equatable {
                height: rect.height / CGFloat(KeyLayout.rowCount))
     }
 
+    /// A key's cell. On a slid grid a cell can straddle the seam and come in two
+    /// (or four) pieces; this is the piece the key picks (see `mainPiece`).
     func cell(row: Int, col: Int) -> CGRect {
+        mainPiece(of: virtualCell(row: row, col: col), home: unslidCell(row: row, col: col))
+    }
+
+    /// The key's cell before any slide.
+    private func unslidCell(row: Int, col: Int) -> CGRect {
         CGRect(x: columnEdges[col], y: rowEdges[row],
                width: columnEdges[col + 1] - columnEdges[col],
                height: rowEdges[row + 1] - rowEdges[row])
+    }
+
+    /// The key's cell slid by `offset`, before wrapping (it may run past the region).
+    func virtualCell(row: Int, col: Int) -> CGRect {
+        unslidCell(row: row, col: col).offsetBy(dx: offset.x, dy: offset.y)
+    }
+
+    /// `r` (in slid, unwrapped space) wrapped back into the region: up to four pieces.
+    func pieces(of r: CGRect) -> [CGRect] {
+        func axis(_ lo: CGFloat, _ len: CGFloat, _ start: CGFloat, _ size: CGFloat) -> [(CGFloat, CGFloat)] {
+            let a = start + Grid.wrap(lo - start, size), end = start + size
+            if a + len <= end + 0.5 { return [(a, len)] }
+            return [(a, end - a), (start, a + len - end)]
+        }
+        var out: [CGRect] = []
+        for (x, w) in axis(r.minX, r.width, rect.minX, rect.width) {
+            for (y, h) in axis(r.minY, r.height, rect.minY, rect.height) {
+                out.append(CGRect(x: x, y: y, width: w, height: h))
+            }
+        }
+        return out
+    }
+
+    /// The piece of `r` a key picks: the biggest, or on a tie the one nearest
+    /// `home` (where the key sits unslid), so a half-slid Q stays on the left.
+    private func mainPiece(of r: CGRect, home: CGRect) -> CGRect {
+        func dist(_ p: CGRect) -> CGFloat { hypot(p.midX - home.midX, p.midY - home.midY) }
+        return pieces(of: r).min {
+            let a = $0.width * $0.height, b = $1.width * $1.height
+            return abs(a - b) > 0.5 ? a > b : dist($0) < dist($1)
+        }!
     }
 
     /// What one key press selects: that key's cell, halved once per arrow
     /// pressed before it, in order (↑ E = top half of E, ↑ ← E = its top-left
     /// quarter, ↑ ↓ E = the second quarter from the top).
     func selection(row: Int, col: Int, arrows: [Direction] = []) -> CGRect {
-        arrows.reduce(cell(row: row, col: col)) { Grid.half(of: $0, toward: $1) }
+        mainPiece(of: virtualSelection(row: row, col: col, arrows: arrows),
+                  home: unslidCell(row: row, col: col))
+    }
+
+    /// `selection` before wrapping: always the full size (for "does it click?").
+    func virtualSelection(row: Int, col: Int, arrows: [Direction] = []) -> CGRect {
+        arrows.reduce(virtualCell(row: row, col: col)) { Grid.half(of: $0, toward: $1) }
     }
 
     /// Most arrows per axis before a key (4 = a sixteenth of the cell).
@@ -111,6 +159,39 @@ struct Grid: Equatable {
         return g
     }
 
+    /// This grid slid one cell toward `direction` (⇧ + arrow with no arrows
+    /// pending), stopping at the edge of `bounds`. `focus` moves with it. Nil if
+    /// it can't move that way (already at that edge, e.g. the whole screen).
+    func shifted(toward direction: Direction, within bounds: CGRect) -> Grid? {
+        let step = cellSize
+        var dx: CGFloat = 0, dy: CGFloat = 0
+        switch direction {
+        case .up:    dy = max(-step.height, bounds.minY - rect.minY)
+        case .down:  dy = min(step.height, bounds.maxY - rect.maxY)
+        case .left:  dx = max(-step.width, bounds.minX - rect.minX)
+        case .right: dx = min(step.width, bounds.maxX - rect.maxX)
+        }
+        guard abs(dx) > 0.5 || abs(dy) > 0.5 else { return nil }
+        var g = Grid(rect: rect.offsetBy(dx: dx, dy: dy))
+        g.focus = CGPoint(x: focus.x + dx, y: focus.y + dy)
+        return g
+    }
+
+    /// The cells slid half a cell toward `direction`, wrapping: what goes off
+    /// one side comes back in on the other (top-level ⇧ + arrow, where the grid
+    /// fills the screen). Ten slides right is a whole row's turn, back to the start.
+    func slid(toward direction: Direction) -> Grid {
+        let half = CGSize(width: cellSize.width / 2, height: cellSize.height / 2)
+        var o = offset
+        switch direction {
+        case .up:    o.y -= half.height
+        case .down:  o.y += half.height
+        case .left:  o.x -= half.width
+        case .right: o.x += half.width
+        }
+        return Grid(rect: rect, offset: o)
+    }
+
     /// An arrow key's direction.
     enum Direction: Equatable {
         case up, down, left, right
@@ -155,5 +236,13 @@ struct Grid: Equatable {
 
     private static func edges(count n: Int, from start: CGFloat, length: CGFloat) -> [CGFloat] {
         (0...n).map { start + length * CGFloat($0) / CGFloat(n) }
+    }
+
+    /// `v` wrapped into 0..<size (rounding off float drift near size).
+    private static func wrap(_ v: CGFloat, _ size: CGFloat) -> CGFloat {
+        guard size > 0 else { return 0 }
+        let w = v.truncatingRemainder(dividingBy: size)
+        let r = w < 0 ? w + size : w
+        return size - r < 0.01 ? 0 : r
     }
 }
