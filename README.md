@@ -16,22 +16,27 @@ Z X C V B N M , . /
 
 Press a key to **click** the centre of its cell (e.g. `F`).
 
-For more precision, press **`⇧` + arrows first**: each one halves the next key's cell again,
-in order (`⇧↑` `E` = top half of `E`, `⇧↑` `⇧←` `E` = its top-left quarter, `⇧↑` `⇧↑` `E` =
-top quarter, `⇧↑` `⇧↓` `E` = the second quarter from the top). Up to four per axis (a
-sixteenth); `⌫` undoes the last one.
+For more precision, **slide the grid** until a cell's centre sits on what you want, then press
+that key. An arrow slides the cells half a cell that way, and `⇧` + an arrow slides them an
+eighth of a cell. The grid wraps around: what goes off one side comes back in on the other, so
+you can keep going. A cell split across the edge is picked by its bigger piece (on a tie, the
+piece on the key's own side). Sliding leaves the mouse alone; `⌫` undoes the last slide.
 
-**Plain arrows move things.** On an axis you've halved, an arrow moves the shaded slot one
-slot that way within the cell: `⇧↑` `⇧↑` (top quarter) then `↓` is the 2nd quarter. On an axis
-you haven't, it slides the whole grid half a cell that way, wrapping around: what goes off one
-side comes back in on the other, so you can keep going. A cell split across the edge is picked
-by its bigger piece (on a tie, the piece on the key's own side). Sliding leaves the mouse alone.
+**`+` / `−` zoom** the cells in and out a little at a time (0.8× / 1.25×), and the grid keeps
+wrapping either way. Zoomed in, the 40 cells make a smaller bright box that slides round the screen and across its
+edges; faded copies of the keyboard tile the rest of the screen around it so you can see what's
+where, but only the bright box's keys click. Zoomed
+out past the screen, the cells are bigger than a tenth of it; the ones beyond its edges are out of
+view until you slide them in. It goes from 12pt cells up to one cell the height of the screen.
+Arrows slide half a cell and `⇧` + arrow an eighth of one, of the cells as they are now, so
+steps get finer as you zoom in. `⇧` + a key zooms in a step with that key's cell staying where it
+is. `⌫` undoes a zoom too.
 
 Want to drill down instead? `defaults write local.keypoint levels -int 2` makes the first key
-zoom into its cell and the second click. There, a plain arrow slides the zoomed box one of its
-cells that way (stopping at the screen edge), and if the `⇧` + arrows make a pick small enough
-(40pt or less either way — `defaults write local.keypoint clickSize -float 80`), the key clicks
-at once instead of zooming. The hint bar shows whether the next key *zooms* or *clicks*.
+zoom into its cell and the second click. There, an arrow moves the zoomed box one of its cells
+that way (`⇧` + arrow a quarter of a cell), stopping at the screen edge. If the cells are small
+enough (40pt or less either way — `defaults write local.keypoint clickSize -float 80`), the key
+clicks at once instead of zooming. The hint bar shows whether the next key *zooms* or *clicks*.
 
 To **highlight** (or drag anything), tap `⌃` while the grid is up (or hold it on any press). Your next pick marks
 the start instead of clicking; the grid resets to the whole screen, you pick the end, and
@@ -53,14 +58,16 @@ picked start.
 | triple-tap `⌘` | double-click there (selects a word) — a 4th tap makes it a triple-click |
 | `Tab` | cycle the button: left → right → middle → left |
 | hold `⌥` on any press | middle-click instead of left-click (e.g. open a link in a new tab) |
-| arrow | move the shaded slot one slot that way (`⇧↑` `⇧↑` `↓` = 2nd quarter); on an axis not halved, slide the grid half a cell that way, wrapping |
+| arrow | slide the grid half a cell that way, wrapping around |
+| `⇧` + arrow | slide it an eighth of a cell |
+| `+` / `−` | zoom the cells in / out a step (0.8× / 1.25×); the grid keeps wrapping |
+| `⇧` + a key | zoom in a step, keeping that key's cell where it is |
 | tap `⌃` | highlight mode: pick a start, then an end, and Keypoint drags between them (tap again to turn off) |
 | hold `⌃` on any press | turn highlight mode on from that press (e.g. `⌃F` `J` sets the start) |
 | a key | click its cell's centre (with `levels` 2 or more, zoom into it until the last level) |
-| `⇧` + arrows, then a key | each halves the key's cell again, in order: `⇧↑` `E` = top half, `⇧↑` `⇧←` `E` = top-left quarter, `⇧↑` `⇧↓` `E` = 2nd quarter from the top (up to a sixteenth per axis) |
 | `Space` | middle-click now at the centre of the current box |
 | `Return` | right-click now at the centre of the current box |
-| `⌫` | undo the last `⇧` + arrow, or go back a level |
+| `⌫` | undo the last slide or zoom, or go back a level |
 | `Esc` | cancel |
 
 Keys are matched by physical position, so the grid works the same on Dvorak, Colemak,
@@ -114,7 +121,7 @@ project needed).
 ## Settings
 
 ```sh
-defaults write local.keypoint levels -int 2   # key presses per click (default 1: arrows narrow, a key clicks)
+defaults write local.keypoint levels -int 2   # key presses per click (default 1: arrows slide the grid, a key clicks)
 defaults write local.keypoint highlightNudge -float 4   # points each highlight end moves outward
 ```
 
@@ -126,7 +133,7 @@ for large text, or set it to 0 for exact points.
 
 - `Sources/KeyLayout.swift` — grid keys and key codes
 - `Sources/KeyTap.swift` — global key hook (⌘ / ⌃ tap detection, swallowing keys while active)
-- `Sources/Grid.swift` — grid maths: cells, minimum cell size, arrow halves
+- `Sources/Grid.swift` — grid maths: cells, minimum cell size, sliding and wrapping
 - `Sources/Overlay.swift` — selection logic, clicking, drawing the grid
 - `Sources/main.swift` — menu bar item and permission handling
 - `Tests/GridTests.swift` — tests for `Grid` (`./build.sh test`)

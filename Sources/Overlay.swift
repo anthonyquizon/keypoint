@@ -53,10 +53,10 @@ final class OverlayController {
         return CGFloat(v ?? 40)
     }
 
-    /// The next key clicks: the last level, or the arrows make its pick small enough.
+    /// The next key clicks: the last level, or its cells are small enough.
     /// (Cells are all the same size before wrapping, so any one tells.)
     private var nextKeyClicks: Bool {
-        isFinalLevel || Grid.isClickSize(grid.virtualSelection(row: 0, col: 0, arrows: pending), size: clickSize)
+        isFinalLevel || Grid.isClickSize(grid.virtualCell(row: 0, col: 0), size: clickSize)
     }
 
     /// Button a click would use now: the Tab-chosen one, or middle with ⌥ held.
@@ -69,7 +69,7 @@ final class OverlayController {
     /// highlight). `button` overrides the chosen one.
     func clickNow(button: Mouse.Button? = nil) {
         guard isActive else { return }
-        clearPending()
+        clearMoves()
         finish(button: button)
     }
 
@@ -110,6 +110,7 @@ final class OverlayController {
 
         grid = Grid(rect: view.bounds)
         history = []
+        clearMoves()
         choice = ModeChoice()
         held = CGEventSource.flagsState(.combinedSessionState)
         dragStart = nil
@@ -120,7 +121,7 @@ final class OverlayController {
     }
 
     func cancel() {
-        clearPending()
+        clearMoves()
         choice = ModeChoice()
         dragStart = nil
         guard isActive else { return }
@@ -146,8 +147,11 @@ final class OverlayController {
         if !dragMode { dragStart = nil }
     }
 
-    /// Arrows pressed before a key, in order: each halves the key's cell again.
-    private var pending: [Grid.Direction] = []
+    /// Grids before each slide or zoom on this level, so ⌫ undoes them.
+    private var moves: [Grid] = []
+
+    /// Smallest cell `+` zooms in to: about the smallest label that fits.
+    private let minZoomCell = CGSize(width: 12, height: 12)
 
     func handleKey(_ code: CGKeyCode, flags: CGEventFlags) {
         // ⌃ / ⌥ held on a press switches to its mode, overriding the current one.
@@ -156,16 +160,18 @@ final class OverlayController {
 
         switch code {
         case KeyLayout.escape:
-            clearPending()
+            clearMoves()
             cancel()
         case KeyLayout.delete:
-            if !pending.isEmpty {
-                // Undo the last arrow.
-                pending.removeLast()
+            if let prev = moves.popLast() {
+                // Undo the last slide or zoom.
+                grid = prev
+                if !history.isEmpty { moveCursor(to: global(grid.focus)) }
                 refresh()
                 return
             }
             if let prev = history.popLast() {
+                clearMoves()
                 grid = prev
                 moveCursor(to: global(grid.focus))
                 refresh()
@@ -188,37 +194,39 @@ final class OverlayController {
             choice.cycle()
             modeChanged()
             refresh()
-        case _ where KeyLayout.arrows[code] != nil && flags.contains(.maskShift):
-            // ⇧ + arrows then a key: each ⇧ + arrow halves the key's cell again, in
-            // order (⇧↑ E = top half, ⇧↑ ⇧← E = top-left quarter, ⇧↑ ⇧↓ E = 2nd quarter).
-            guard let dir = KeyLayout.arrows[code], let next = Grid.push(dir, onto: pending) else {
-                NSSound.beep()   // that axis is already down to a sixteenth
+        case _ where KeyLayout.zoomIn.contains(code) || KeyLayout.zoomOut.contains(code):
+            // + / −: make the cells smaller or bigger, a step at a time. The grid keeps
+            // wrapping: zoomed in, the 40 cells are a box that slides round the screen;
+            // zoomed out past the screen, cells off its edges slide into view. ⌫ undoes a zoom.
+            let factor: CGFloat = KeyLayout.zoomIn.contains(code) ? 0.8 : 1.25
+            guard let next = grid.zoomed(by: factor, minCell: minZoomCell) else {
+                NSSound.beep()   // as far as it goes
                 return
             }
-            pending = next
+            moves.append(grid)
+            grid = next
+            if !history.isEmpty { moveCursor(to: global(grid.focus)) }
             refresh()
         case _ where KeyLayout.arrows[code] != nil:
-            // A plain arrow moves things: the shaded slot one slot that way within the
-            // cell (top quarter → 2nd quarter) if that axis is halved, otherwise the grid.
+            // An arrow slides the grid that way; ⇧ + arrow slides it a quarter as far,
+            // to line a cell's centre up with the target. Along an axis where the grid
+            // spans the screen its cells slide (half a cell, ⇧ an eighth), wrapping:
+            // what goes off one side comes in on the other. Along one it doesn't (zoomed
+            // in), the box moves (a cell, ⇧ a quarter), stopping at the screen edge.
             guard let dir = KeyLayout.arrows[code] else { return }
-            if pending.contains(where: { $0.isVertical == dir.isVertical }) {
-                guard let next = Grid.nudge(pending, toward: dir) else {
-                    NSSound.beep()   // the slot is already at that edge of the cell
-                    return
-                }
-                pending = next
-                refresh()
-                return
-            }
-            // Slide the whole grid one cell that way (when the target sits just past
-            // the box's edge). ⌫ still goes back a level. On the top level the grid
-            // fills the screen, so its cells slide half a cell instead, wrapping: what
-            // goes off one side comes in on the other.
+            let fine = flags.contains(.maskShift)
             let top = history.isEmpty
-            guard let next = top ? grid.slid(toward: dir) : grid.shifted(toward: dir, within: view.bounds) else {
+            let spans = dir.isVertical ? grid.rect.height >= view.bounds.height - 0.5
+                                       : grid.rect.width >= view.bounds.width - 0.5
+            // Steps follow the zoom: half a cell, ⇧ an eighth, of the cells as they are now.
+            let cells = grid.cellSize, part: CGFloat = fine ? 8 : 2
+            let step = CGSize(width: cells.width / part, height: cells.height / part)
+            guard let next = spans ? grid.slid(toward: dir, by: step)
+                                   : grid.shifted(toward: dir, within: view.bounds, fraction: fine ? 0.25 : 1) else {
                 NSSound.beep()   // already at that edge
                 return
             }
+            moves.append(grid)
             grid = next
             if !top { moveCursor(to: global(grid.focus)) }   // the top level leaves the mouse alone
             refresh()
@@ -227,20 +235,36 @@ final class OverlayController {
                 NSSound.beep()
                 return
             }
-            let arrows = pending
-            clearPending()
-            enter(Grid(rect: grid.selection(row: pos.row, col: pos.col, arrows: arrows)))
+            if flags.contains(.maskShift) {
+                // ⇧ + a key: zoom in a step, keeping that key's cell where it is.
+                guard grid.cell(row: pos.row, col: pos.col) != nil,
+                      let next = grid.zoomed(by: 0.8, minCell: minZoomCell, around: (pos.row, pos.col)) else {
+                    NSSound.beep()   // out of view, or as far in as it goes
+                    return
+                }
+                moves.append(grid)
+                grid = next
+                if !history.isEmpty { moveCursor(to: global(grid.focus)) }
+                refresh()
+                return
+            }
+            guard let cell = grid.cell(row: pos.row, col: pos.col) else {
+                NSSound.beep()   // that key's cell is out of view (zoomed out past the screen)
+                return
+            }
+            enter(Grid(rect: cell))
         }
     }
 
-    private func clearPending() {
-        pending = []
+    private func clearMoves() {
+        moves = []
     }
 
     /// Move to `next`: click at its focus on the last level, otherwise zoom into it.
     private func enter(_ next: Grid) {
         let clicks = isFinalLevel || Grid.isClickSize(next.rect, size: clickSize)
         history.append(grid)
+        clearMoves()   // each level's ⌫ undoes its own slides
         grid = next
 
         if clicks {
@@ -262,7 +286,6 @@ final class OverlayController {
         view.isFinal = nextKeyClicks
         let shown = choice.current(held: held)
         view.button = shown.button
-        view.pending = pending
         view.dragMode = shown == .highlight
         view.dragStart = dragStart
         view.needsDisplay = true
@@ -275,6 +298,7 @@ final class OverlayController {
                 dragStart = grid.focus
                 grid = Grid(rect: view.bounds)
                 history = []
+                clearMoves()
                 refresh()
                 return
             }
@@ -396,7 +420,6 @@ final class GridView: NSView {
     var level = 0
     var isFinal = false
     var button = Mouse.Button.left
-    var pending: [Grid.Direction] = []
     var dragMode = false
     var dragStart: CGPoint?
 
@@ -419,46 +442,36 @@ final class GridView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let region = grid.rect
+        // The live cells: one box, or its pieces where it wraps round the edges.
+        let live = grid.pieces(of: grid.box)
+        let liveArea = live.reduce(0) { $0 + $1.width * $1.height }
+        let whole = liveArea >= bounds.width * bounds.height - 1
 
-        // Dim everything outside the active region.
+        // Dim everything outside the live cells (drilled or zoomed in).
         let outside = NSBezierPath(rect: bounds)
-        outside.appendRect(region)
+        for piece in live { outside.appendRect(piece) }
         outside.windingRule = .evenOdd
-        NSColor.black.withAlphaComponent(level == 0 ? 0.0 : 0.45).setFill()
+        NSColor.black.withAlphaComponent(whole ? 0.0 : 0.45).setFill()
         outside.fill()
 
         NSColor.black.withAlphaComponent(0.18).setFill()
-        region.fill()
+        live.forEach { $0.fill() }
 
         // Home row tint (A S D F … ;) so you can orient quickly.
         NSColor.systemBlue.withAlphaComponent(0.10).setFill()
         let home = grid.virtualCell(row: KeyLayout.homeRow, col: 0)
-        for piece in grid.pieces(of: CGRect(x: region.minX, y: home.minY, width: region.width, height: home.height)) {
+        let box = grid.box
+        for piece in grid.pieces(of: CGRect(x: box.minX, y: home.minY, width: box.width, height: home.height)) {
             piece.fill()
         }
 
-        // Arrows pressed, waiting for a key: shade where they land in every cell.
-        if !pending.isEmpty {
-            (modeTint ?? .systemYellow).withAlphaComponent(0.25).setFill()
-            for r in 0..<KeyLayout.rowCount {
-                for c in 0..<KeyLayout.columnCount {
-                    grid.selection(row: r, col: c, arrows: pending).fill()
-                }
-            }
-        }
-
-        // Grid lines.
+        // Grid lines, tiled across the whole region so the grid reads as endless.
         let lines = NSBezierPath()
-        // Each cell's left / top edge, wrapped (the one landing on the region's edge is skipped).
-        for c in 0..<KeyLayout.columnCount {
-            let x = grid.pieces(of: grid.virtualCell(row: 0, col: c))[0].minX
-            guard x - region.minX > 0.5 else { continue }
+        for x in grid.lineXs {
             lines.move(to: CGPoint(x: x, y: region.minY))
             lines.line(to: CGPoint(x: x, y: region.maxY))
         }
-        for r in 0..<KeyLayout.rowCount {
-            let y = grid.pieces(of: grid.virtualCell(row: r, col: 0))[0].minY
-            guard y - region.minY > 0.5 else { continue }
+        for y in grid.lineYs {
             lines.move(to: CGPoint(x: region.minX, y: y))
             lines.line(to: CGPoint(x: region.maxX, y: y))
         }
@@ -467,30 +480,35 @@ final class GridView: NSView {
         lines.stroke()
 
         // Region border.
-        let border = NSBezierPath(rect: region.insetBy(dx: 0.5, dy: 0.5))
-        border.lineWidth = level == 0 ? 0 : 2
-        accent.setStroke()
-        if level > 0 { border.stroke() }
+        if !whole {
+            accent.setStroke()
+            for piece in live {
+                let border = NSBezierPath(rect: piece.insetBy(dx: 0.5, dy: 0.5))
+                border.lineWidth = 2
+                border.stroke()
+            }
+        }
+
+        // Zoomed in: faded copies of the keyboard tiled round the live box, so the
+        // grid reads as endless. Only the bright box's keys click; these just orient.
+        let copies = grid.copies
+        if !copies.isEmpty {
+            NSGraphicsContext.saveGraphicsState()
+            let notLive = NSBezierPath(rect: bounds)
+            for piece in live { notLive.appendRect(piece) }
+            notLive.windingRule = .evenOdd
+            notLive.addClip()
+            for copy in copies {
+                drawLabel(KeyLayout.rows[copy.row][copy.col].label, in: copy.rect, faded: true)
+            }
+            NSGraphicsContext.restoreGraphicsState()
+        }
 
         // Key labels.
-        let pill = (modeTint ?? .black).withAlphaComponent(0.6)
-
         for (r, row) in KeyLayout.rows.enumerated() {
             for (c, key) in row.enumerated() {
-                let cell = grid.cell(row: r, col: c)
-                let fontSize = max(8, min(42, min(cell.width, cell.height) * 0.4))
-                let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .semibold)
-                let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
-                let text = NSAttributedString(string: key.label, attributes: attrs)
-                let size = text.size()
-                let pad = max(2, fontSize * 0.25)
-                let box = CGRect(x: cell.midX - size.width / 2 - pad,
-                                 y: cell.midY - size.height / 2 - pad / 2,
-                                 width: size.width + pad * 2,
-                                 height: size.height + pad)
-                pill.setFill()
-                NSBezierPath(roundedRect: box, xRadius: pad, yRadius: pad).fill()
-                text.draw(at: CGPoint(x: box.minX + pad, y: box.minY + pad / 2))
+                guard let cell = grid.cell(row: r, col: c) else { continue }
+                drawLabel(key.label, in: cell, faded: false)
             }
         }
 
@@ -507,14 +525,31 @@ final class GridView: NSView {
         drawHint()
     }
 
+    /// A key label in a pill at the centre of `cell`; `faded` for the copies round the live box.
+    private func drawLabel(_ label: String, in cell: CGRect, faded: Bool) {
+        let fontSize = max(8, min(42, min(cell.width, cell.height) * 0.4))
+        let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .semibold)
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: font, .foregroundColor: NSColor.white.withAlphaComponent(faded ? 0.4 : 1),
+        ]
+        let text = NSAttributedString(string: label, attributes: attrs)
+        let size = text.size()
+        let pad = max(2, fontSize * 0.25)
+        let pillRect = CGRect(x: cell.midX - size.width / 2 - pad,
+                              y: cell.midY - size.height / 2 - pad / 2,
+                              width: size.width + pad * 2,
+                              height: size.height + pad)
+        (modeTint ?? .black).withAlphaComponent(faded ? 0.3 : 0.6).setFill()
+        NSBezierPath(roundedRect: pillRect, xRadius: pad, yRadius: pad).fill()
+        text.draw(at: CGPoint(x: pillRect.minX + pad, y: pillRect.minY + pad / 2))
+    }
+
     private func drawHint() {
         let mode = dragMode ? (dragStart == nil ? "HIGHLIGHT · pick start" : "HIGHLIGHT · pick end")
             : button == .right ? "RIGHT CLICK" : button == .middle ? "MIDDLE CLICK" : "left click"
         let action = !dragMode ? "clicks" : dragStart == nil ? "sets start" : "highlights"
         let stage = isFinal ? "next key \(action)" : "next key zooms"
-        let half = pending.isEmpty ? ""
-            : " · \(pending.map(\.symbol).joined()) \(Grid.describe(pending))"
-        let s = "Level \(level + 1) · \(stage)\(half) · \(mode) · key = its cell · ⇧ arrows then key = halve the cell, in order · arrows move the shading (or slide the grid) · ⇥ cycle right / middle / left · ⌥ middle (hold) · ⌃ highlight (hold or tap) · ⌘ click here · space middle · ⏎ right · ⌫ back · esc cancel"
+        let s = "Level \(level + 1) · \(stage) · \(mode) · key = its cell · arrows slide the grid (⇧ finer) · + − zoom · ⇧ key zoom in there · ⇥ cycle right / middle / left · ⌥ middle (hold) · ⌃ highlight (hold or tap) · ⌘ click here · space middle · ⏎ right · ⌫ back · esc cancel"
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
             .foregroundColor: NSColor.white,

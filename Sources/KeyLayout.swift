@@ -49,6 +49,9 @@ enum KeyLayout {
     static let space: CGKeyCode = 49
     static let returnKey: CGKeyCode = 36
     static let tab: CGKeyCode = 48
+    /// + / = and − (main row and keypad): zoom the grid in and out.
+    static let zoomIn: Set<CGKeyCode> = [24, 69]
+    static let zoomOut: Set<CGKeyCode> = [27, 78]
     static let leftCommand: CGKeyCode = 55
     static let rightCommand: CGKeyCode = 54
     static let leftControl: CGKeyCode = 59
@@ -58,7 +61,7 @@ enum KeyLayout {
     static let leftOption: CGKeyCode = 58
     static let rightOption: CGKeyCode = 61
 
-    /// Arrow keys → direction (⇧ + an arrow then a key picks that half of its cell).
+    /// Arrow keys → direction (an arrow slides the grid that way).
     static let arrows: [CGKeyCode: Grid.Direction] = [
         126: .up, 125: .down, 123: .left, 124: .right,
     ]

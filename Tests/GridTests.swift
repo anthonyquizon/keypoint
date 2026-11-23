@@ -24,6 +24,7 @@ struct GridTests {
     static let rect = CGRect(x: 0, y: 0, width: 1000, height: 400)
 
     static func main() {
+        // (Slides by a fraction of a cell, as the arrows do.)
         evenGrid()
         offsetRect()
         selectionIsCell()
@@ -40,6 +41,7 @@ struct GridTests {
         smallPicksClickAtOnce()
         nudgeMovesTheSlot()
         shiftSlidesTheGrid()
+        zoomScalesTheGrid()
         buttonTests()
 
         print(failures == 0 ? "OK — \(checks) checks passed" : "\(failures) of \(checks) checks failed")
@@ -71,7 +73,7 @@ struct GridTests {
 
     static func selectionWithArrowIsHalf() {
         let g = Grid(rect: rect)
-        let e = g.cell(row: 1, col: 2)
+        let e = g.cell(row: 1, col: 2)!
         for d: Grid.Direction in [.up, .down, .left, .right] {
             check(g.selection(row: 1, col: 2, arrows: [d]) == Grid.half(of: e, toward: d), "\(d) E = that half of E")
         }
@@ -92,8 +94,8 @@ struct GridTests {
     static func twoKeysReachLastLevelCell() {
         for screen in screens {
             let top = Grid(rect: CGRect(origin: .zero, size: screen))
-            let l2 = Grid(rect: top.selection(row: 2, col: 3))
-            let target = Grid(rect: l2.selection(row: 2, col: 6))
+            let l2 = Grid(rect: top.selection(row: 2, col: 3)!)
+            let target = Grid(rect: l2.selection(row: 2, col: 6)!)
             close(target.rect.width, screen.width / 100, "\(screen): cell width")
             close(target.rect.height, screen.height / 16, "\(screen): cell height")
             close(target.focus.x, screen.width * (0.3 + 0.065), "\(screen): click x")
@@ -143,7 +145,7 @@ struct GridTests {
 
     static func repeatedArrowHalvesAgain() {
         let g = Grid(rect: rect)
-        let e = g.cell(row: 1, col: 2)   // 100 × 100 at (200, 100)
+        let e = g.cell(row: 1, col: 2)!   // 100 × 100 at (200, 100)
         check(g.selection(row: 1, col: 2, arrows: [.up]) == Grid.half(of: e, toward: .up), "one arrow = half")
         check(g.selection(row: 1, col: 2, arrows: [.up, .up])
               == CGRect(x: 200, y: 100, width: 100, height: 25), "↑ ↑ E = top quarter")
@@ -177,7 +179,7 @@ struct GridTests {
         check(!Grid.isClickSize(CGRect(x: 0, y: 0, width: 30, height: 30), size: 24), "too big both ways zooms")
         // A 1920 × 1080 screen: an F cell is 192 × 270; ← ← ← ↑ ↑ ↑ ↑ gets it to 24 × ~17.
         let g = Grid(rect: CGRect(x: 0, y: 0, width: 1920, height: 1080))
-        let pick = g.selection(row: 2, col: 3, arrows: [.left, .left, .left, .up, .up, .up, .up])
+        let pick = g.selection(row: 2, col: 3, arrows: [.left, .left, .left, .up, .up, .up, .up])!
         check(Grid.isClickSize(pick, size: 24), "enough arrows on level 1 click at once")
     }
 
@@ -242,10 +244,64 @@ struct GridTests {
         for _ in 0..<20 { round = round.slid(toward: .right) }
         check(round == top, "a whole row's turn comes back to the start")
         check(top.slid(toward: .right).slid(toward: .left) == top, "and slides back")
+        let fine = top.slid(toward: .right, fraction: 0.125)
+        check(fine.cell(row: 0, col: 4) == CGRect(x: 412.5, y: 0, width: 100, height: 100), "⇧ slides an eighth of a cell")
+        var eighths = top
+        for _ in 0..<4 { eighths = eighths.slid(toward: .right, fraction: 0.125) }
+        check(eighths == top.slid(toward: .right), "four eighths = one half-cell slide")
+        check(g.shifted(toward: .right, within: screen, fraction: 0.25)?.rect.minX == 302.5,
+              "zoomed in, ⇧ moves the box a quarter of a cell")
         let up = top.slid(toward: .up).slid(toward: .left)
         check(up.pieces(of: up.virtualCell(row: 0, col: 0)).count == 4, "a corner cell can split four ways")
         check(up.selection(row: 1, col: 1, arrows: [.down]) == CGRect(x: 50, y: 100, width: 100, height: 50),
               "arrows halve the slid cell")
+    }
+
+    static func zoomScalesTheGrid() {
+        let screen = CGRect(x: 0, y: 0, width: 1000, height: 400)   // cells 100 × 100
+        let min = CGSize(width: 12, height: 12)
+        let top = Grid(rect: screen)
+        let zin = top.zoomed(by: 0.8, minCell: min)!
+        check(zin.cellSize == CGSize(width: 80, height: 80), "+ makes the cells 0.8×")
+        check(zin.box == CGRect(x: 100, y: 40, width: 800, height: 320), "around the screen's centre")
+        check(zin.rect == screen && zin.period == screen.size, "and still wraps round the whole screen")
+        let copies = zin.copies
+        check(!copies.isEmpty && Grid(rect: screen).copies.isEmpty, "zoomed in, copies tile round the box")
+        check(copies.contains { $0.row == 3 && $0.col == 9 && $0.rect == CGRect(x: 20, y: -40, width: 80, height: 80) },
+              "the up-left copy's / sits just above-left of the box's Q")
+        check(!copies.contains { $0.rect.intersects(zin.box.insetBy(dx: 1, dy: 1)) }, "no copy overlaps the live box")
+        let back = zin.zoomed(by: 1.25, minCell: min)!
+        check(back.scale == 1 && back.box == screen, "− zooms back out to exactly unzoomed")
+        // Zoomed in, the box slides round the screen and wraps.
+        let moved = zin.slid(toward: .right, by: CGSize(width: 150, height: 0))
+        check(moved.pieces(of: moved.virtualCell(row: 0, col: 9)) == [CGRect(x: 970, y: 40, width: 30, height: 80),
+                                                                       CGRect(x: 0, y: 40, width: 50, height: 80)],
+              "a zoomed box wraps across the screen edge")
+        check(moved.cell(row: 0, col: 9) == CGRect(x: 0, y: 40, width: 50, height: 80), "the key picks its bigger piece")
+        check(moved.cell(row: 0, col: 0) == CGRect(x: 250, y: 40, width: 80, height: 80), "the rest moves with it")
+        // Past the screen: cells bigger than a tenth, the box wrapping on its own size.
+        let out = top.zoomed(by: 1.25, minCell: min)!
+        check(out.cellSize == CGSize(width: 125, height: 125), "− keeps going past the screen")
+        check(out.period == CGSize(width: 1250, height: 500), "the box repeats on its own size")
+        check(out.cell(row: 1, col: 4) == CGRect(x: 375, y: 75, width: 125, height: 125),
+              "zoomed out around the screen's centre")
+        check(out.cell(row: 0, col: 0) == nil, "Q is pushed out of view")
+        check(out.cell(row: 0, col: 1) == CGRect(x: 0, y: 0, width: 125, height: 75), "edge cells are cut to the screen")
+        let away = out.slid(toward: .right, by: CGSize(width: 125, height: 0))
+        check(away.cell(row: 0, col: 9) == nil, "a cell slid past the screen is out of view")
+        let atF = top.zoomed(by: 0.8, minCell: min, around: (2, 3))!
+        check(atF.cell(row: 2, col: 3) == CGRect(x: 310, y: 210, width: 80, height: 80),
+              "⇧ + a key zooms in around that key's cell")
+        let zinF = zin.zoomed(by: 0.8, minCell: min, around: (0, 0))!
+        check(zinF.virtualCell(row: 0, col: 0).midX == zin.virtualCell(row: 0, col: 0).midX
+              && zinF.virtualCell(row: 0, col: 0).midY == zin.virtualCell(row: 0, col: 0).midY,
+              "zoomed in, that key's centre stays put too")
+        var g = top, n = 0
+        while let next = g.zoomed(by: 1.25, minCell: min) { g = next; n += 1 }
+        check(abs(g.scale - Grid.maxScale) < 1e-6, "stops at a cell the size of the screen (\(n) steps)")
+        g = top; n = 0
+        while let next = g.zoomed(by: 0.8, minCell: min) { g = next; n += 1 }
+        check(n == 9 && g.cellSize.width >= 12, "+ stops before cells get under 12pt (\(n) steps)")
     }
 
     static func nudgeMovesTheSlot() {
@@ -258,5 +314,12 @@ struct GridTests {
         check(Grid.nudge([.down, .down], toward: .down) == nil, "bottom quarter can't go lower")
         check(Grid.nudge([.left], toward: .up) == nil, "no vertical arrows = nothing to nudge")
         check(Grid.nudge([], toward: .left) == nil, "no arrows = nothing to nudge")
+    }
+}
+
+extension Grid {
+    /// Slide by `fraction` of a cell (tests only).
+    func slid(toward d: Direction, fraction f: CGFloat = 0.5) -> Grid {
+        slid(toward: d, by: CGSize(width: cellSize.width * f, height: cellSize.height * f))
     }
 }
