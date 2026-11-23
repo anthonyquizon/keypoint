@@ -23,11 +23,12 @@ final class OverlayController {
     private var dragStart: CGPoint?
 
     /// Number of key presses (levels) before the click fires.
-    /// 1 (the default) = no drilling down: arrows narrow the pick, a key clicks.
-    /// Change with:  defaults write local.keypoint levels -int 2
+    /// 2 (the default) = the first key zooms into its cell, the second clicks.
+    /// 1 = no drilling down: a key clicks its cell straight away.
+    /// Change with:  defaults write local.keypoint levels -int 1
     var maxLevels: Int {
         let v = UserDefaults.standard.integer(forKey: "levels")
-        return v > 0 ? v : 1
+        return v > 0 ? v : 2
     }
 
     /// How far (points) each end of a highlight moves outward so the characters
@@ -212,7 +213,8 @@ final class OverlayController {
             // to line a cell's centre up with the target. Along an axis where the grid
             // spans the screen its cells slide (half a cell, ⇧ an eighth), wrapping:
             // what goes off one side comes in on the other. Along one it doesn't (zoomed
-            // in), the box moves (a cell, ⇧ a quarter), stopping at the screen edge.
+            // in), the box moves (a cell, ⇧ a quarter), up to half a top-level cell past
+            // the screen edge, so you can still nudge onto something there.
             guard let dir = KeyLayout.arrows[code] else { return }
             let fine = flags.contains(.maskShift)
             let top = history.isEmpty
@@ -222,8 +224,9 @@ final class OverlayController {
             let cells = grid.cellSize, part: CGFloat = fine ? 8 : 2
             let step = CGSize(width: cells.width / part, height: cells.height / part)
             guard let next = spans ? grid.slid(toward: dir, by: step)
-                                   : grid.shifted(toward: dir, within: view.bounds, fraction: fine ? 0.25 : 1) else {
-                NSSound.beep()   // already at that edge
+                                   : grid.shifted(toward: dir, within: view.bounds,
+                                                  fraction: fine ? 0.25 : 1, overshoot: edgeOvershoot) else {
+                NSSound.beep()   // already half a top-level cell past that edge
                 return
             }
             moves.append(grid)
@@ -252,8 +255,20 @@ final class OverlayController {
                 NSSound.beep()   // that key's cell is out of view (zoomed out past the screen)
                 return
             }
-            enter(Grid(rect: cell))
+            // A cell nudged partly off the screen: pick the part that's on it.
+            let onScreen = cell.intersection(view.bounds)
+            guard onScreen.width > 0.5, onScreen.height > 0.5 else {
+                NSSound.beep()   // nudged right off the screen
+                return
+            }
+            enter(Grid(rect: onScreen))
         }
+    }
+
+    /// How far a drilled-down box may go past the screen edge: half a top-level cell.
+    private var edgeOvershoot: CGSize {
+        let top = Grid(rect: view.bounds).fullCellSize
+        return CGSize(width: top.width / 2, height: top.height / 2)
     }
 
     private func clearMoves() {

@@ -14,7 +14,12 @@ A S D F G H J K L ;
 Z X C V B N M , . /
 ```
 
-Press a key to **click** the centre of its cell (e.g. `F`).
+Press a key to **zoom into** its cell (e.g. `F`); the grid redraws inside it, and a second key
+**clicks** the centre of that cell. If a cell is already small enough (40pt or less either way —
+`defaults write local.keypoint clickSize -float 80`), the key clicks at once instead of zooming.
+The hint bar shows whether the next key *zooms* or *clicks*. Once zoomed in, an arrow moves the
+zoomed box one of its cells that way (`⇧` + arrow a quarter of a cell). It can go up to half a
+top-level cell past the screen edge, so you can still nudge onto something there. `⌫` undoes a move, then goes back a level.
 
 For more precision, **slide the grid** until a cell's centre sits on what you want, then press
 that key. An arrow slides the cells half a cell that way, and `⇧` + an arrow slides them an
@@ -32,11 +37,8 @@ Arrows slide half a cell and `⇧` + arrow an eighth of one, of the cells as the
 steps get finer as you zoom in. `⇧` + a key zooms in a step with that key's cell staying where it
 is. `⌫` undoes a zoom too.
 
-Want to drill down instead? `defaults write local.keypoint levels -int 2` makes the first key
-zoom into its cell and the second click. There, an arrow moves the zoomed box one of its cells
-that way (`⇧` + arrow a quarter of a cell), stopping at the screen edge. If the cells are small
-enough (40pt or less either way — `defaults write local.keypoint clickSize -float 80`), the key
-clicks at once instead of zooming. The hint bar shows whether the next key *zooms* or *clicks*.
+Prefer one key per click? `defaults write local.keypoint levels -int 1` turns drilling down off,
+so a key clicks its cell straight away (slide and zoom the grid first for precision).
 
 To **highlight** (or drag anything), tap `⌃` while the grid is up (or hold it on any press). Your next pick marks
 the start instead of clicking; the grid resets to the whole screen, you pick the end, and
@@ -64,7 +66,7 @@ picked start.
 | `⇧` + a key | zoom in a step, keeping that key's cell where it is |
 | tap `⌃` | highlight mode: pick a start, then an end, and Keypoint drags between them (tap again to turn off) |
 | hold `⌃` on any press | turn highlight mode on from that press (e.g. `⌃F` `J` sets the start) |
-| a key | click its cell's centre (with `levels` 2 or more, zoom into it until the last level) |
+| a key | zoom into its cell; on the last level (or once cells are small enough), click its centre |
 | `Space` | middle-click now at the centre of the current box |
 | `Return` | right-click now at the centre of the current box |
 | `⌫` | undo the last slide or zoom, or go back a level |
@@ -121,7 +123,7 @@ project needed).
 ## Settings
 
 ```sh
-defaults write local.keypoint levels -int 2   # key presses per click (default 1: arrows slide the grid, a key clicks)
+defaults write local.keypoint levels -int 1   # key presses per click (default 2: the first key zooms in, the second clicks)
 defaults write local.keypoint highlightNudge -float 4   # points each highlight end moves outward
 ```
 

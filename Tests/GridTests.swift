@@ -227,6 +227,14 @@ struct GridTests {
         check(edge.shifted(toward: .left, within: screen)?.rect.minX == 0, "stops at the screen edge")
         check(edge.shifted(toward: .up, within: screen) == nil, "can't go past the edge")
         check(Grid(rect: screen).shifted(toward: .right, within: screen) == nil, "whole screen can't slide")
+        // With overshoot the box goes past the edge, up to that many points (cells 10 × 25;
+        // half a top-level cell of this screen is 50 × 50).
+        let over = CGSize(width: 50, height: 50)
+        var past = edge, steps = 0
+        while let next = past.shifted(toward: .up, within: screen, overshoot: over) { past = next; steps += 1 }
+        check(past.rect.minY == -50 && steps == 2, "↑ goes up to half a top-level cell past the edge (\(steps) steps)")
+        check(edge.shifted(toward: .left, within: screen, fraction: 0.25, overshoot: over)?.rect.minX == 2.5,
+              "⇧← a quarter cell past the edge")
         // Top level: cells slide half a cell and wrap around (cells 100 × 100).
         let top = Grid(rect: screen)
         let left = top.slid(toward: .left)

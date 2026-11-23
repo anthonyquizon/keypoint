@@ -224,16 +224,18 @@ struct Grid: Equatable {
     }
 
     /// This grid slid `fraction` of a cell toward `direction` (an arrow on a
-    /// zoomed-in level), stopping at the edge of `bounds`. `focus` moves with it. Nil if
-    /// it can't move that way (already at that edge, e.g. the whole screen).
-    func shifted(toward direction: Direction, within bounds: CGRect, fraction: CGFloat = 1) -> Grid? {
+    /// zoomed-in level), stopping `over` points past the edge of `bounds` (e.g. half
+    /// a top-level cell). `focus` moves with it. Nil if it can't move that way
+    /// (already as far as it goes, e.g. the whole screen).
+    func shifted(toward direction: Direction, within bounds: CGRect, fraction: CGFloat = 1,
+                 overshoot over: CGSize = .zero) -> Grid? {
         let step = CGSize(width: cellSize.width * fraction, height: cellSize.height * fraction)
         var dx: CGFloat = 0, dy: CGFloat = 0
         switch direction {
-        case .up:    dy = max(-step.height, bounds.minY - rect.minY)
-        case .down:  dy = min(step.height, bounds.maxY - rect.maxY)
-        case .left:  dx = max(-step.width, bounds.minX - rect.minX)
-        case .right: dx = min(step.width, bounds.maxX - rect.maxX)
+        case .up:    dy = min(0, max(-step.height, bounds.minY - over.height - rect.minY))
+        case .down:  dy = max(0, min(step.height, bounds.maxY + over.height - rect.maxY))
+        case .left:  dx = min(0, max(-step.width, bounds.minX - over.width - rect.minX))
+        case .right: dx = max(0, min(step.width, bounds.maxX + over.width - rect.maxX))
         }
         guard abs(dx) > 0.5 || abs(dy) > 0.5 else { return nil }
         var g = Grid(rect: rect.offsetBy(dx: dx, dy: dy), offset: offset, scale: scale)
