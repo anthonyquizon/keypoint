@@ -238,18 +238,8 @@ final class OverlayController {
                 NSSound.beep()
                 return
             }
-            if flags.contains(.maskShift) {
-                // ⇧ + a key: move the mouse to that cell's centre (on the screen). On
-                // the top level it also zooms in a step, keeping that cell where it is.
-                if !history.isEmpty {
-                    guard let cell = grid.cell(row: pos.row, col: pos.col)?.intersection(view.bounds),
-                          cell.width > 0.5, cell.height > 0.5 else {
-                        NSSound.beep()   // off the screen
-                        return
-                    }
-                    moveCursor(to: global(CGPoint(x: cell.midX, y: cell.midY)))
-                    return
-                }
+            if flags.contains(.maskCommand) {
+                // ⌘ + a key: zoom in a step, keeping that key's cell where it is.
                 guard grid.cell(row: pos.row, col: pos.col) != nil,
                       let next = grid.zoomed(by: 0.8, minCell: minZoomCell, around: (pos.row, pos.col)) else {
                     NSSound.beep()   // out of view, or as far in as it goes
@@ -257,10 +247,18 @@ final class OverlayController {
                 }
                 moves.append(grid)
                 grid = next
-                if let cell = grid.cell(row: pos.row, col: pos.col)?.intersection(view.bounds), !cell.isNull {
-                    moveCursor(to: global(CGPoint(x: cell.midX, y: cell.midY)))
-                }
+                if !history.isEmpty { moveCursor(to: global(grid.focus)) }
                 refresh()
+                return
+            }
+            if flags.contains(.maskShift) {
+                // ⇧ + a key: move the mouse to that cell's centre (on the screen), no click.
+                guard let cell = grid.cell(row: pos.row, col: pos.col)?.intersection(view.bounds),
+                      cell.width > 0.5, cell.height > 0.5 else {
+                    NSSound.beep()   // off the screen
+                    return
+                }
+                moveCursor(to: global(CGPoint(x: cell.midX, y: cell.midY)))
                 return
             }
             guard let cell = grid.cell(row: pos.row, col: pos.col) else {
@@ -576,7 +574,7 @@ final class GridView: NSView {
             : button == .right ? "RIGHT CLICK" : button == .middle ? "MIDDLE CLICK" : "left click"
         let action = !dragMode ? "clicks" : dragStart == nil ? "sets start" : "highlights"
         let stage = isFinal ? "next key \(action)" : "next key zooms"
-        let s = "Level \(level + 1) · \(stage) · \(mode) · key = its cell · arrows slide the grid (⇧ finer) · + − zoom · ⇧ key \(level == 0 ? "zoom in + " : "")move mouse there · ⇥ cycle right / middle / left · ⌥ middle (hold) · ⌃ highlight (hold or tap) · ⌘ click here · space middle · ⏎ right · ⌫ back · esc cancel"
+        let s = "Level \(level + 1) · \(stage) · \(mode) · key = its cell · arrows slide the grid (⇧ finer) · + − zoom · ⌘ key zoom in there · ⇧ key move mouse there · ⇥ cycle right / middle / left · ⌥ middle (hold) · ⌃ highlight (hold or tap) · ⌘ click here · space middle · ⏎ right · ⌫ back · esc cancel"
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
             .foregroundColor: NSColor.white,

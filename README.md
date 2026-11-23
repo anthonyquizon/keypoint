@@ -34,9 +34,8 @@ where, but only the bright box's keys click. Zoomed
 out past the screen, the cells are bigger than a tenth of it; the ones beyond its edges are out of
 view until you slide them in. It goes from 12pt cells up to one cell the height of the screen.
 Arrows slide half a cell and `⇧` + arrow an eighth of one, of the cells as they are now, so
-steps get finer as you zoom in. `⇧` + a key zooms in a step with that key's cell staying where it
-is, and moves the mouse to that cell's centre; drilled down, `⇧` + a key just moves the mouse
-there (no zoom, no click). `⌫` undoes a zoom too.
+steps get finer as you zoom in. `⌘` + a key zooms in a step with that key's cell staying where it
+is. `⌫` undoes a zoom too.
 
 Prefer one key per click? `defaults write local.keypoint levels -int 1` turns drilling down off,
 so a key clicks its cell straight away (slide and zoom the grid first for precision).
@@ -64,7 +63,8 @@ picked start.
 | arrow | slide the grid half a cell that way, wrapping around |
 | `⇧` + arrow | slide it an eighth of a cell |
 | `+` / `−` | zoom the cells in / out a step (0.8× / 1.25×); the grid keeps wrapping |
-| `⇧` + a key | move the mouse to its cell's centre; on the top level also zoom in a step, keeping that cell where it is |
+| `⇧` + a key | move the mouse to its cell's centre, without clicking |
+| `⌘` + a key | zoom in a step, keeping that key's cell where it is |
 | tap `⌃` | highlight mode: pick a start, then an end, and Keypoint drags between them (tap again to turn off) |
 | hold `⌃` on any press | turn highlight mode on from that press (e.g. `⌃F` `J` sets the start) |
 | a key | zoom into its cell; on the last level (or once cells are small enough), click its centre |
