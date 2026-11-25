@@ -13,16 +13,16 @@ final class OverlayController {
     private var grid = Grid(rect: .zero)
     private var region: CGRect { grid.rect }
     private var history: [Grid] = []
-    /// Mode chosen so far this pick (Tab cycles right / middle; ⌃ highlight).
+    /// Mode chosen so far this pick (Tab cycles right / middle; ⌥ highlight).
     private var choice = ModeChoice()
 
-    /// Highlight mode (tap ⌃, or hold it on a press): the first pick sets where a drag starts, the
+    /// Highlight mode (tap ⌥, or hold it on a press): the first pick sets where a drag starts, the
     /// second where it ends, then Keypoint drags between them.
     private var dragMode: Bool { choice.mode == .highlight }
     /// Where the drag starts (view coordinates), once picked.
     private var dragStart: CGPoint?
 
-    /// The scroll anchor (view coordinates), set with ⌥ + a key. While it's set,
+    /// The scroll anchor (view coordinates), set with ⌃ + a key. While it's set,
     /// each key scrolls by how far that key is from it.
     private var scrollAnchor: CGPoint?
 
@@ -144,7 +144,7 @@ final class OverlayController {
         refresh()
     }
 
-    /// A lone tap of ⌃: switch to its mode, or back to left-click if it's already on.
+    /// A lone tap of ⌥: switch to its mode, or back to left-click if it's already on.
     func modeTapped(_ mode: ClickMode) {
         guard isActive else { return }
         choice.tapped(mode)
@@ -158,7 +158,7 @@ final class OverlayController {
     }
 
     func handleKey(_ code: CGKeyCode, flags: CGEventFlags) {
-        // ⌃ held on a press switches to highlight, overriding the current mode.
+        // ⌥ held on a press switches to highlight, overriding the current mode.
         choice.keyPressed(flags: flags)
         modeChanged()
 
@@ -230,7 +230,7 @@ final class OverlayController {
         }
     }
 
-    /// ⌥ + key: set the scroll anchor there (or move it). ⌥ + the anchor's own key drops it.
+    /// ⌃ + key: set the scroll anchor there (or move it). ⌃ + the anchor's own key drops it.
     private func setAnchor(_ point: CGPoint) {
         scrollAnchor = Scroll.anchor(scrollAnchor, pressedAt: point)
         refresh()
@@ -262,7 +262,7 @@ final class OverlayController {
 
     // MARK: - Private
 
-    /// Redraw. A ⌃ held right now shows highlight over the chosen mode, and ⌘ / ⌥ / ⇧
+    /// Redraw. A ⌥ held right now shows highlight over the chosen mode, and ⌘ / ⌃ / ⇧
     /// what the next key does.
     private func refresh() {
         view.grid = grid
@@ -395,7 +395,7 @@ enum Mouse {
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(i + 1) * 0.01) {
                 let e = CGEvent(scrollWheelEvent2Source: source, units: .pixel, wheelCount: 2,
                                 wheel1: wheel.wheel1, wheel2: wheel.wheel2, wheel3: 0)
-                // Clear modifiers so the ⌥ still held doesn't change how the app scrolls.
+                // Clear modifiers so a held ⇧ or ⌃ doesn't change how the app scrolls (⌃ can zoom).
                 e?.flags = []
                 e?.location = p
                 e?.post(tap: .cghidEventTap)
@@ -445,7 +445,7 @@ final class GridView: NSView {
         // Scrolling: hide the grid so you can see what scrolls. Its keys still work.
         if let p = scrollAnchor {
             drawMark(at: p, color: .systemOrange)
-            drawBar("SCROLL · \(stage) · ⌥ key move the anchor · ⌘ key click · ⌫ stop · esc cancel")
+            drawBar("SCROLL · \(stage) · ⌃ key move the anchor · ⌘ key click · ⌫ stop · esc cancel")
             return
         }
 
@@ -548,7 +548,7 @@ final class GridView: NSView {
     private func drawHint() {
         let mode = dragMode ? (dragStart == nil ? "HIGHLIGHT · pick start" : "HIGHLIGHT · pick end")
             : button == .right ? "RIGHT CLICK" : button == .middle ? "MIDDLE CLICK" : "left click"
-        drawBar("Level \(level + 1) · \(stage) · \(mode) · key = its cell · ⌘ key click it now · ⇧ key move the mouse there · ⌥ key scroll anchor, then keys scroll toward them · arrows shift the grid (⇧ further) · ⇥ cycle right / middle / left · ⌃ highlight (hold or tap) · tap ⌘ click here · space middle · ⏎ right · ⌫ back · esc cancel")
+        drawBar("Level \(level + 1) · \(stage) · \(mode) · key = its cell · ⌘ key click it now · ⇧ key move the mouse there · ⌃ key scroll anchor, then keys scroll toward them · arrows shift the grid (⇧ further) · ⇥ cycle right / middle / left · ⌥ highlight (hold or tap) · tap ⌘ click here · space middle · ⏎ right · ⌫ back · esc cancel")
     }
 
     /// The hint bar along the bottom of the screen.

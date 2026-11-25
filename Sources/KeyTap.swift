@@ -18,10 +18,10 @@ final class KeyTap {
     /// When the last tap-triggered click happened (for double/triple-click).
     private var lastClickTapAt: TimeInterval = 0
 
-    /// Lone modifier taps while the grid is open: ⌃ highlight (Tab cycles the button).
-    /// ⌃ may be tapped with ⇧ held.
+    /// Lone modifier taps while the grid is open: ⌥ highlight (Tab cycles the button).
+    /// ⌥ may be tapped with ⇧ held.
     private var modifierTaps: [(tap: ModifierTap, action: (OverlayController) -> Void)] = [
-        (ModifierTap(codes: [KeyLayout.leftControl, KeyLayout.rightControl], flag: .maskControl,
+        (ModifierTap(codes: [KeyLayout.leftOption, KeyLayout.rightOption], flag: .maskAlternate,
                      allowed: .maskShift), { $0.modeTapped(.highlight) }),
     ]
 

@@ -12,9 +12,9 @@ extension GridTests {
 
     static func anchorSetsMovesAndDrops() {
         let q = CGPoint(x: 50, y: 150), z = CGPoint(x: 50, y: 350)
-        check(Scroll.anchor(nil, pressedAt: q) == q, "⌥ + key sets the anchor")
-        check(Scroll.anchor(q, pressedAt: z) == z, "⌥ + another key moves it")
-        check(Scroll.anchor(q, pressedAt: q) == nil, "⌥ + the anchor's own key drops it")
+        check(Scroll.anchor(nil, pressedAt: q) == q, "⌃ + key sets the anchor")
+        check(Scroll.anchor(q, pressedAt: z) == z, "⌃ + another key moves it")
+        check(Scroll.anchor(q, pressedAt: q) == nil, "⌃ + the anchor's own key drops it")
     }
 
     static func keysScrollByTheirDistanceFromTheAnchor() {

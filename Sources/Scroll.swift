@@ -1,9 +1,9 @@
 import CoreGraphics
 
-/// Scrolling from an anchor: ⌥ + a key sets it, and while it's set each key scrolls
+/// Scrolling from an anchor: ⌃ + a key sets it, and while it's set each key scrolls
 /// the view by how far that key is from it.
 enum Scroll {
-    /// The anchor after ⌥ + a key at `point`: set or moved there, or dropped if it's
+    /// The anchor after ⌃ + a key at `point`: set or moved there, or dropped if it's
     /// already there.
     static func anchor(_ anchor: CGPoint?, pressedAt point: CGPoint) -> CGPoint? {
         anchor == point ? nil : point

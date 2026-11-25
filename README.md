@@ -22,12 +22,12 @@ Hold a modifier to do something else with the key instead of zooming in:
 
 - **`⌘` + key** clicks that key's centre right away, on any level.
 - **`⇧` + key** just moves the mouse there; tap `⌘` to click where it is.
-- **`⌥` + key** sets a scroll anchor there (an orange dot) and hides the grid, so you can
+- **`⌃` + key** sets a scroll anchor there (an orange dot) and hides the grid, so you can
   see what scrolls. Its keys still work: from then on **any key** scrolls the view under
   the anchor toward where that key sits on the grid, by how far it is from the anchor:
   with the anchor on `Q`, `Z` scrolls down two rows' worth (what was at `Z` comes up to
-  `Q`), and pressing it again scrolls as far again. `⌥` + another key moves the anchor;
-  `⌫` (or `⌥` + the anchor's key) drops it and brings the grid back. `⌘` + key still clicks.
+  `Q`), and pressing it again scrolls as far again. `⌃` + another key moves the anchor;
+  `⌫` (or `⌃` + the anchor's key) drops it and brings the grid back. `⌘` + key still clicks.
 
 For more precision, the **arrows shift the grid** an eighth of a cell that way (`⇧` +
 arrow: half a cell). The grid wraps round, so keys pushed off one edge come back on the
@@ -39,7 +39,7 @@ clickSize -float 40`) clicks its centre right away instead of zooming another le
 with `levels` set to 3. The hint bar shows whether the next key *zooms*, *clicks*, *scrolls*
 or *moves the mouse*.
 
-To **highlight** (or drag anything), tap `⌃` while the grid is up (or hold it on any press). Your next pick marks
+To **highlight** (or drag anything), tap `⌥` while the grid is up (or hold it on any press). Your next pick marks
 the start instead of clicking; the grid resets to the whole screen, you pick the end, and
 Keypoint drags from one to the other — so it also works for drag-and-drop, box-select and
 sliders. `⌫` from the top of the end pick goes back to picking the start.
@@ -47,7 +47,7 @@ sliders. `⌫` from the top of the end pick goes back to picking the start.
 If a selection is so small its cells couldn't fit their labels, the grid grows around it
 (to an 18pt minimum cell) and the cursor stays on what you selected.
 
-`Tab` cycles the button: left → right → middle → left. `⌃` highlight works by holding it on
+`Tab` cycles the button: left → right → middle → left. `⌥` highlight works by holding it on
 any press or tapping it on its own (tap again for left-click). Whichever you use last
 overrides the current mode. Leaving highlight drops a picked start.
 
@@ -57,12 +57,12 @@ overrides the current mode. Leaving highlight drops a picked start.
 | tap `⌘` again | click where the mouse already is — so double-tap `⌘` clicks without moving it (with the `Tab`-chosen button) |
 | triple-tap `⌘` | double-click there (selects a word) — a 4th tap makes it a triple-click |
 | `Tab` | cycle the button: left → right → middle → left |
-| tap `⌃` | highlight mode: pick a start, then an end, and Keypoint drags between them (tap again to turn off) |
-| hold `⌃` on any press | turn highlight mode on from that press (e.g. `⌃F` `J` sets the start) |
+| tap `⌥` | highlight mode: pick a start, then an end, and Keypoint drags between them (tap again to turn off) |
+| hold `⌥` on any press | turn highlight mode on from that press (e.g. `⌥F` `J` sets the start) |
 | a key | zoom into its cell (clicks its centre on the last level) |
 | `⌘` + key | click that key's centre now, without zooming in |
 | `⇧` + key | move the mouse to that key's centre |
-| `⌥` + key | set the scroll anchor there and hide the grid; then every key scrolls from the anchor toward that key, by the distance between them |
+| `⌃` + key | set the scroll anchor there and hide the grid; then every key scrolls from the anchor toward that key, by the distance between them |
 | arrow | shift the grid an eighth of a cell that way; it wraps round the edges |
 | `⇧` + arrow | shift it half a cell |
 | `Space` | middle-click now at the centre of the current box |
@@ -133,7 +133,7 @@ for large text, or set it to 0 for exact points.
 ## Project layout
 
 - `Sources/KeyLayout.swift` — grid keys and key codes
-- `Sources/KeyTap.swift` — global key hook (⌘ / ⌃ tap detection, swallowing keys while active)
+- `Sources/KeyTap.swift` — global key hook (⌘ / ⌥ tap detection, swallowing keys while active)
 - `Sources/Grid.swift` — grid maths: cells, shifting and wrapping, minimum cell size
 - `Sources/Overlay.swift` — selection logic, clicking, drawing the grid
 - `Sources/main.swift` — menu bar item and permission handling
