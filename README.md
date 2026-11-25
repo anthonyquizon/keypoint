@@ -29,12 +29,12 @@ Hold a modifier to do something else with the key instead of zooming in:
   `Q`), and pressing it again scrolls as far again. `⌃` + another key moves the anchor;
   `⌫` (or `⌃` + the anchor's key) drops it and brings the grid back. `⌘` + key still clicks.
 
-For more precision, the **arrows shift the grid** an eighth of a cell that way (`⇧` +
-arrow: half a cell). The grid wraps round, so keys pushed off one edge come back on the
+For more precision, the **arrows shift the grid** a sixteenth of a cell that way (`⇧` +
+arrow: a quarter of a cell). The grid wraps round, so keys pushed off one edge come back on the
 other, and every key still clicks its centre. Once you've zoomed in, the arrows **move the
-whole box** instead: an eighth of its own size that way (`⇧`: half), keys and mouse with it,
+whole box** instead: a sixteenth of its own size that way (`⇧`: a quarter), keys and mouse with it,
 stopping at the screen's edge — handy when what you want sits just across its border. `⌫`
-puts the keys (or the box) back (`defaults write local.keypoint shiftStep -float 0.125`
+puts the keys (or the box) back (`defaults write local.keypoint shiftStep -float 0.0625`
 sets the step; `⇧` is four steps).
 
 A key whose cell is small enough (40pt or less either way — `defaults write local.keypoint
@@ -66,8 +66,8 @@ overrides the current mode. Leaving highlight drops a picked start.
 | `⌘` + key | click that key's centre now, without zooming in |
 | `⇧` + key | move the mouse to that key's centre |
 | `⌃` + key | set the scroll anchor there and hide the grid; then every key scrolls from the anchor toward that key, by the distance between them |
-| arrow | shift the keys an eighth of a cell that way; they wrap round the edges. Zoomed in: move the whole box an eighth of its size |
-| `⇧` + arrow | shift the keys half a cell (zoomed in: move the box half its size) |
+| arrow | shift the keys a sixteenth of a cell that way; they wrap round the edges. Zoomed in: move the whole box a sixteenth of its size |
+| `⇧` + arrow | shift the keys a quarter of a cell (zoomed in: move the box a quarter of its size) |
 | `Space` | middle-click now at the centre of the current box |
 | `Return` | right-click now at the centre of the current box |
 | `⌫` | drop the scroll anchor, put shifted keys (or a moved box) back, or go back a level |
@@ -103,7 +103,7 @@ every rebuild, so a login item pointing there would break.
 Ad-hoc signed builds lose the Accessibility grant every rebuild (`build.sh` resets it so
 you get a fresh prompt). To avoid this, create a self-signed certificate once in
 Keychain Access (Certificate Assistant → Create a Certificate → type **Code Signing**)
-named **Keypoint Dev** — `build.sh` uses it automatically when it's in your keychain.
+named **Keypoint** — `build.sh` uses it automatically when it's in your keychain.
 
 To sign with a different certificate, or force ad-hoc signing:
 
@@ -126,7 +126,7 @@ project needed).
 ```sh
 defaults write local.keypoint levels -int 2   # key presses per click (default 2)
 defaults write local.keypoint highlightNudge -float 4   # points each highlight end moves outward
-defaults write local.keypoint shiftStep -float 0.125    # fraction of a cell an arrow shifts the keys (zoomed in: of the box it moves)
+defaults write local.keypoint shiftStep -float 0.0625   # fraction of a cell an arrow shifts the keys (zoomed in: of the box it moves)
 ```
 
 Takes effect the next time the grid opens. Highlights widen each end by `highlightNudge`

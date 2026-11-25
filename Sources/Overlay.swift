@@ -57,12 +57,12 @@ final class OverlayController {
     }
 
     /// Fraction of a cell an arrow shifts the keys; ⇧ + arrow shifts four times as
-    /// far (half a cell by default). Drilled down, the fraction of the box an arrow
-    /// moves it.
-    /// Change with:  defaults write local.keypoint shiftStep -float 0.125
+    /// far (a sixteenth and a quarter of a cell by default). Drilled down, the fraction
+    /// of the box an arrow moves it.
+    /// Change with:  defaults write local.keypoint shiftStep -float 0.0625
     var shiftStep: CGFloat {
         let v = UserDefaults.standard.object(forKey: "shiftStep") as? Double
-        return CGFloat(v ?? 0.125)
+        return CGFloat(v ?? 0.0625)
     }
 
     /// The next key clicks: the last level, or its cell is small enough.
