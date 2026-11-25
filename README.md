@@ -18,13 +18,26 @@ Each level takes **one key press**: press a key to zoom into its cell (e.g. `F`)
 grid redraws inside that cell, and on the last level (2 by default) the press **clicks**
 the cell's centre. So a normal click is two keys: `F` `J`.
 
-For more precision, press **arrows first**: each one halves the next key's cell again, in
-order (`↑` `E` = top half of `E`, `↑` `←` `E` = its top-left quarter, `↑` `↑` `E` = top
-quarter, `↑` `↓` `E` = the second quarter from the top). Up to four per axis (a
-sixteenth); `⌫` undoes the last arrow. If the arrows make a pick small enough (80pt or less
-either way — `defaults write local.keypoint clickSize -float 80`), the key clicks its centre right away
-in the current mode instead of zooming another level. The hint bar shows whether the next key *zooms* or
-*clicks*.
+Hold a modifier to do something else with the key instead of zooming in:
+
+- **`⌘` + key** clicks that key's centre right away, on any level.
+- **`⇧` + key** just moves the mouse there; tap `⌘` to click where it is.
+- **`⌥` + key** sets a scroll anchor there (an orange dot) and hides the grid, so you can
+  see what scrolls. Its keys still work: from then on **any key** scrolls the view under
+  the anchor toward where that key sits on the grid, by how far it is from the anchor:
+  with the anchor on `Q`, `Z` scrolls down two rows' worth (what was at `Z` comes up to
+  `Q`), and pressing it again scrolls as far again. `⌥` + another key moves the anchor;
+  `⌫` (or `⌥` + the anchor's key) drops it and brings the grid back. `⌘` + key still clicks.
+
+For more precision, the **arrows shift the grid** an eighth of a cell that way (`⇧` +
+arrow: half a cell). The grid wraps round, so keys pushed off one edge come back on the
+other, and every key still clicks its centre. `⌫` puts the keys back
+(`defaults write local.keypoint shiftStep -float 0.125` sets the step; `⇧` is four steps).
+
+A key whose cell is small enough (40pt or less either way — `defaults write local.keypoint
+clickSize -float 40`) clicks its centre right away instead of zooming another level, e.g.
+with `levels` set to 3. The hint bar shows whether the next key *zooms*, *clicks*, *scrolls*
+or *moves the mouse*.
 
 To **highlight** (or drag anything), tap `⌃` while the grid is up (or hold it on any press). Your next pick marks
 the start instead of clicking; the grid resets to the whole screen, you pick the end, and
@@ -35,29 +48,26 @@ If a selection is so small its cells couldn't fit their labels, the grid grows a
 (to an 18pt minimum cell) and the cursor stays on what you selected.
 
 `Tab` cycles the button: left → right → middle → left. `⌃` highlight works by holding it on
-any press or tapping it on its own (tap again for left-click), and holding `⌥` on a press
-middle-clicks. Whichever you use last overrides the current mode. Leaving highlight drops a
-picked start.
-
-Arrows shaded the wrong slot? `⇧` + an arrow nudges the shading one slot that way within
-the cell: `↑` `↑` (top quarter) then `⇧↓` is the 2nd quarter. It only moves along an axis
-you've already pressed arrows on.
+any press or tapping it on its own (tap again for left-click). Whichever you use last
+overrides the current mode. Leaving highlight drops a picked start.
 
 | Key | Action |
 |---|---|
 | tap `⌘` | show the grid |
-| tap `⌘` again | click where the mouse already is — so double-tap `⌘` clicks without moving it (with the `Tab`-chosen button; hold `⌥` to middle-click) |
+| tap `⌘` again | click where the mouse already is — so double-tap `⌘` clicks without moving it (with the `Tab`-chosen button) |
 | triple-tap `⌘` | double-click there (selects a word) — a 4th tap makes it a triple-click |
 | `Tab` | cycle the button: left → right → middle → left |
-| hold `⌥` on any press | middle-click instead of left-click (e.g. open a link in a new tab) |
-| `⇧` + arrow | nudge the arrows' shaded slot one slot that way (`↑` `↑` `⇧↓` = 2nd quarter) |
 | tap `⌃` | highlight mode: pick a start, then an end, and Keypoint drags between them (tap again to turn off) |
 | hold `⌃` on any press | turn highlight mode on from that press (e.g. `⌃F` `J` sets the start) |
 | a key | zoom into its cell (clicks its centre on the last level) |
-| arrows, then a key | each arrow halves the key's cell again, in order: `↑` `E` = top half, `↑` `←` `E` = top-left quarter, `↑` `↓` `E` = 2nd quarter from the top (up to a sixteenth per axis; a pick ≤ 80pt wide or tall clicks its centre at once) |
+| `⌘` + key | click that key's centre now, without zooming in |
+| `⇧` + key | move the mouse to that key's centre |
+| `⌥` + key | set the scroll anchor there and hide the grid; then every key scrolls from the anchor toward that key, by the distance between them |
+| arrow | shift the grid an eighth of a cell that way; it wraps round the edges |
+| `⇧` + arrow | shift it half a cell |
 | `Space` | middle-click now at the centre of the current box |
 | `Return` | right-click now at the centre of the current box |
-| `⌫` | undo the last arrow press, or go back a level |
+| `⌫` | drop the scroll anchor, put shifted keys back, or go back a level |
 | `Esc` | cancel |
 
 Keys are matched by physical position, so the grid works the same on Dvorak, Colemak,
@@ -105,7 +115,7 @@ CODESIGN_ID=- ./build.sh run
 ./build.sh test
 ```
 
-Runs the grid maths tests in `Tests/` (plain assertions compiled with `swiftc`; no Xcode
+Runs the grid maths, key action and scroll tests in `Tests/` (plain assertions compiled with `swiftc`; no Xcode
 project needed).
 
 ## Settings
@@ -113,6 +123,7 @@ project needed).
 ```sh
 defaults write local.keypoint levels -int 2   # key presses per click (default 2)
 defaults write local.keypoint highlightNudge -float 4   # points each highlight end moves outward
+defaults write local.keypoint shiftStep -float 0.125    # fraction of a cell an arrow shifts the grid
 ```
 
 Takes effect the next time the grid opens. Highlights widen each end by `highlightNudge`
@@ -123,10 +134,12 @@ for large text, or set it to 0 for exact points.
 
 - `Sources/KeyLayout.swift` — grid keys and key codes
 - `Sources/KeyTap.swift` — global key hook (⌘ / ⌃ tap detection, swallowing keys while active)
-- `Sources/Grid.swift` — grid maths: cells, minimum cell size, arrow halves
+- `Sources/Grid.swift` — grid maths: cells, shifting and wrapping, minimum cell size
 - `Sources/Overlay.swift` — selection logic, clicking, drawing the grid
 - `Sources/main.swift` — menu bar item and permission handling
-- `Tests/GridTests.swift` — tests for `Grid` (`./build.sh test`)
+- `Sources/Buttons.swift` — click modes, what a key press does by its modifiers, modifier taps
+- `Sources/Scroll.swift` — the scroll anchor, scroll distances and wheel steps
+- `Tests/` — tests for `Grid`, `Buttons` and `Scroll` (`./build.sh test`)
 - `build.sh` — compiles and signs `build/Keypoint.app`, or runs the tests
 
 ## License

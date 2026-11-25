@@ -131,7 +131,7 @@ final class KeyTap {
         }
 
         if flags.contains(.maskCommand) {
-            // ⇧ / ⌥ are allowed (⌥ + ⌘ tap-click = middle click); other modifiers aren't.
+            // ⇧ / ⌥ are allowed; other modifiers aren't.
             let others: CGEventFlags = [.maskControl, .maskSecondaryFn]
             cmdCandidate = flags.intersection(others).isEmpty
             cmdDownAt = now

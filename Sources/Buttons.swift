@@ -17,12 +17,10 @@ enum ClickMode {
         }
     }
 
-    /// The mode a held modifier picks: ⌃ highlight, ⌥ middle (⌃ first if both).
-    /// (⇧ is for nudging the box, so it picks no mode.)
+    /// The mode a held modifier picks: ⌃ highlight. (⌘, ⌥ and ⇧ change what the key
+    /// press does instead — see `KeyAction` — so they pick no mode.)
     static func picked(by flags: CGEventFlags) -> ClickMode? {
-        if flags.contains(.maskControl) { return .highlight }
-        if flags.contains(.maskAlternate) { return .middle }
-        return nil
+        flags.contains(.maskControl) ? .highlight : nil
     }
 
     /// The next button mode for Tab: left → right → middle → left (highlight → right).
@@ -35,9 +33,9 @@ enum ClickMode {
     }
 }
 
-/// The mode for the current pick. Tab cycles left → right → middle. A ⌃ / ⌥
-/// held on a key press switches to its mode (and that sticks); a lone ⌃ tap
-/// switches to highlight, or back to a left click if it was already on.
+/// The mode for the current pick. Tab cycles left → right → middle. A ⌃ held on
+/// a key press switches to highlight (and that sticks); a lone ⌃ tap switches to
+/// highlight, or back to a left click if it was already on.
 struct ModeChoice {
     private(set) var mode = ClickMode.left
 
@@ -59,6 +57,22 @@ struct ModeChoice {
     /// The mode, counting modifiers held right now over the chosen one.
     func current(held: CGEventFlags = []) -> ClickMode {
         ClickMode.picked(by: held) ?? mode
+    }
+}
+
+/// What a grid key press does, by the modifiers held: ⌘ clicks its cell now
+/// (without zooming in), ⌥ sets the scroll anchor there, ⇧ moves the mouse there.
+/// A plain press scrolls while an anchor is set (`anchored`), otherwise zooms in,
+/// or clicks on the last level (`clicks`).
+enum KeyAction {
+    case zoom, click, anchor, scroll, move
+
+    init(flags: CGEventFlags, clicks: Bool, anchored: Bool = false) {
+        if flags.contains(.maskCommand) { self = .click }
+        else if flags.contains(.maskAlternate) { self = .anchor }
+        else if flags.contains(.maskShift) { self = .move }
+        else if anchored { self = .scroll }
+        else { self = clicks ? .click : .zoom }
     }
 }
 

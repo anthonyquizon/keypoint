@@ -1,21 +1,20 @@
 import CoreGraphics
 
-/// The keyboard-shaped grid laid over a region: 10 × 4 even cells.
+/// The keyboard-shaped grid laid over a region: 10 × 4 even cells. Arrows shift the
+/// keys across it, and it wraps: a key pushed past one edge comes back on the other.
 struct Grid: Equatable {
     let rect: CGRect
-    /// Absolute x of each column edge (`columnCount + 1` values, minX…maxX).
-    let columnEdges: [CGFloat]
-    /// Absolute y of each row edge (`rowCount + 1` values, minY…maxY).
-    let rowEdges: [CGFloat]
+    /// How far the keys are shifted, in cells (x right, y down), wrapped to within
+    /// one grid's width / height.
+    private(set) var offset = CGVector.zero
     /// What was actually selected: where the cursor goes and where Space
-    /// clicks. The centre of `rect` unless `legible` grew the grid around it.
-    private(set) var focus: CGPoint
+    /// clicks. The centre of `rect` unless `legible` grew the grid around it,
+    /// or ⇧ + a key moved the mouse to that key.
+    var focus: CGPoint
 
     init(rect: CGRect) {
         self.rect = rect
         focus = CGPoint(x: rect.midX, y: rect.midY)
-        columnEdges = Grid.edges(count: KeyLayout.columnCount, from: rect.minX, length: rect.width)
-        rowEdges = Grid.edges(count: KeyLayout.rowCount, from: rect.minY, length: rect.height)
     }
 
     var cellSize: CGSize {
@@ -23,82 +22,68 @@ struct Grid: Equatable {
                height: rect.height / CGFloat(KeyLayout.rowCount))
     }
 
+    /// A key's cell, shifted by `offset` and wrapped so its centre is inside `rect`
+    /// (that's where its key clicks). Shifted far enough, it hangs over an edge of
+    /// `rect`; that part shows on the opposite side (see `tiles`).
     func cell(row: Int, col: Int) -> CGRect {
-        CGRect(x: columnEdges[col], y: rowEdges[row],
-               width: columnEdges[col + 1] - columnEdges[col],
-               height: rowEdges[row + 1] - rowEdges[row])
+        let s = cellSize
+        let x = Grid.wrap(CGFloat(col) + 0.5 + offset.dx, KeyLayout.columnCount) - 0.5
+        let y = Grid.wrap(CGFloat(row) + 0.5 + offset.dy, KeyLayout.rowCount) - 0.5
+        return CGRect(x: rect.minX + x * s.width, y: rect.minY + y * s.height,
+                      width: s.width, height: s.height)
     }
 
-    /// What one key press selects: that key's cell, halved once per arrow
-    /// pressed before it, in order (↑ E = top half of E, ↑ ← E = its top-left
-    /// quarter, ↑ ↓ E = the second quarter from the top).
-    func selection(row: Int, col: Int, arrows: [Direction] = []) -> CGRect {
-        arrows.reduce(cell(row: row, col: col)) { Grid.half(of: $0, toward: $1) }
+    /// `r` and its copies one grid's width / height away, where they overlap `rect`:
+    /// a cell hanging over one edge also shows on the other.
+    func tiles(of r: CGRect) -> [CGRect] {
+        [-rect.width, 0, rect.width].flatMap { dx in
+            [-rect.height, 0, rect.height].map { dy in r.offsetBy(dx: dx, dy: dy) }
+        }.filter { !$0.intersection(rect).isEmpty }
     }
 
-    /// Most arrows per axis before a key (4 = a sixteenth of the cell).
-    static let maxHalvings = 4
+    /// x of each line between columns inside `rect`, left to right (one that lands on
+    /// its edge isn't included).
+    var columnLines: [CGFloat] {
+        Grid.lines(KeyLayout.columnCount, offset: offset.dx, from: rect.minX, step: cellSize.width)
+    }
+
+    /// y of each line between rows inside `rect`, top to bottom.
+    var rowLines: [CGFloat] {
+        Grid.lines(KeyLayout.rowCount, offset: offset.dy, from: rect.minY, step: cellSize.height)
+    }
+
+    /// This grid with its keys moved `cells` cells toward `direction`, wrapping round.
+    func shifted(_ direction: Direction, by cells: CGFloat) -> Grid {
+        var g = self
+        switch direction {
+        case .up:    g.offset.dy = Grid.wrap(offset.dy - cells, KeyLayout.rowCount)
+        case .down:  g.offset.dy = Grid.wrap(offset.dy + cells, KeyLayout.rowCount)
+        case .left:  g.offset.dx = Grid.wrap(offset.dx - cells, KeyLayout.columnCount)
+        case .right: g.offset.dx = Grid.wrap(offset.dx + cells, KeyLayout.columnCount)
+        }
+        return g
+    }
+
+    /// This grid with its keys back in place.
+    var unshifted: Grid {
+        var g = self
+        g.offset = .zero
+        return g
+    }
 
     /// A selection this thin (≤ `size` points either way) is clicked at its
-    /// centre at once: e.g. ↑ ↑ ↑ ↑ narrows a cell to a strip one line tall.
+    /// centre at once instead of zooming another level.
     static func isClickSize(_ r: CGRect, size: CGFloat) -> Bool {
         r.width <= size || r.height <= size
     }
 
-    /// `arrows` with `direction` pushed on, or nil if its axis is already at `maxHalvings`.
-    static func push(_ direction: Direction, onto arrows: [Direction]) -> [Direction]? {
-        let sameAxis = arrows.filter { $0.isVertical == direction.isVertical }.count
-        return sameAxis < maxHalvings ? arrows + [direction] : nil
-    }
-
-    /// `arrows` with their shaded slot moved one slot toward `direction` (⇧ + arrow):
-    /// ↑ ↑ (top quarter) nudged down is ↑ ↓ (the 2nd quarter). Each arrow on that
-    /// axis keeps its place in the order. Nil if that axis has no arrows, or the
-    /// slot is already at that edge of the cell.
-    static func nudge(_ arrows: [Direction], toward direction: Direction) -> [Direction]? {
-        let vertical = direction.isVertical
-        let places = arrows.indices.filter { arrows[$0].isVertical == vertical }
-        guard !places.isEmpty else { return nil }
-        let n = places.count
-        // Slot index (0 = top / left) the halvings land in, as bits, first arrow highest.
-        let k = places.reduce(0) { $0 * 2 + (arrows[$1] == .down || arrows[$1] == .right ? 1 : 0) }
-        let moved = k + (direction == .down || direction == .right ? 1 : -1)
-        guard moved >= 0, moved < 1 << n else { return nil }
-        var out = arrows
-        for (i, place) in places.enumerated() {
-            let high = (moved >> (n - 1 - i)) & 1 == 1
-            out[place] = vertical ? (high ? .down : .up) : (high ? .right : .left)
-        }
-        return out
-    }
-
-    /// Where `arrows` land within a cell, for the hint bar: e.g. "top quarter",
-    /// "2nd quarter from top · left half". Empty for no arrows.
-    static func describe(_ arrows: [Direction]) -> String {
-        func axis(_ steps: [Direction], first: String, last: String) -> String? {
-            guard !steps.isEmpty else { return nil }
-            let n = steps.count, slots = 1 << n
-            // Index of the slot (0 = top / left) the halvings land in.
-            let k = steps.reduce(0) { $0 * 2 + ($1 == .down || $1 == .right ? 1 : 0) }
-            let size = ["half", "quarter", "eighth", "sixteenth"][n - 1]
-            if k == 0 { return "\(first) \(size)" }
-            if k == slots - 1 { return "\(last) \(size)" }
-            let d = (k + 1) % 10
-            let suffix = (11...13).contains(k + 1) || d == 0 || d > 3 ? "th" : ["st", "nd", "rd"][d - 1]
-            return "\(k + 1)\(suffix) \(size) from \(first)"
-        }
-        return [axis(arrows.filter(\.isVertical), first: "top", last: "bottom"),
-                axis(arrows.filter { !$0.isVertical }, first: "left", last: "right")]
-            .compactMap { $0 }.joined(separator: " · ")
-    }
-
-    /// This grid, grown around its centre (kept inside `bounds`) so every cell
-    /// is at least `minCell` and every label fits. `focus` stays put.
+    /// This grid, grown around its centre so every cell is at least `minCell` and
+    /// every label fits, and moved inside `bounds` (a key that hung over the edge of
+    /// the screen comes back onto it). `focus` stays put.
     func legible(minCell: CGSize, within bounds: CGRect) -> Grid {
         func fit(lo: CGFloat, len: CGFloat, count: Int, min: CGFloat,
                  boundsLo: CGFloat, boundsLen: CGFloat) -> (lo: CGFloat, len: CGFloat) {
-            guard len / CGFloat(count) < min else { return (lo, len) }
-            let newLen = Swift.min(min * CGFloat(count), boundsLen)
+            let newLen = Swift.min(Swift.max(len, min * CGFloat(count)), boundsLen)
             let centre = lo + len / 2
             return (Swift.max(boundsLo, Swift.min(centre - newLen / 2, boundsLo + boundsLen - newLen)), newLen)
         }
@@ -111,30 +96,9 @@ struct Grid: Equatable {
         return g
     }
 
-    /// An arrow key's direction.
+    /// An arrow key's direction (view space: up = smaller y).
     enum Direction: Equatable {
         case up, down, left, right
-        var isVertical: Bool { self == .up || self == .down }
-        var symbol: String {
-            switch self {
-            case .up: return "↑"
-            case .down: return "↓"
-            case .left: return "←"
-            case .right: return "→"
-            }
-        }
-    }
-
-    /// The half of `rect` toward `direction` (view space: up = smaller y).
-    /// An arrow then a key (↑ E) selects that half of the key's cell.
-    static func half(of rect: CGRect, toward direction: Direction) -> CGRect {
-        let w = rect.width / 2, h = rect.height / 2
-        switch direction {
-        case .up:    return CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: h)
-        case .down:  return CGRect(x: rect.minX, y: rect.minY + h, width: rect.width, height: h)
-        case .left:  return CGRect(x: rect.minX, y: rect.minY, width: w, height: rect.height)
-        case .right: return CGRect(x: rect.minX + w, y: rect.minY, width: w, height: rect.height)
-        }
     }
 
     /// Drag end points widened so the characters under both of them are
@@ -153,7 +117,15 @@ struct Grid: Equatable {
         return (CGPoint(x: start.x - d, y: start.y), CGPoint(x: end.x + d, y: end.y))
     }
 
-    private static func edges(count n: Int, from start: CGFloat, length: CGFloat) -> [CGFloat] {
-        (0...n).map { start + length * CGFloat($0) / CGFloat(n) }
+    /// Where the `n` lines before each column (or row) land, `offset` cells along and
+    /// wrapped, leaving out one on the region's edge.
+    private static func lines(_ n: Int, offset: CGFloat, from start: CGFloat, step: CGFloat) -> [CGFloat] {
+        (0..<n).map { wrap(CGFloat($0) + offset, n) }.filter { $0 > 0 }.sorted().map { start + $0 * step }
+    }
+
+    /// `v` wrapped into 0..<n.
+    private static func wrap(_ v: CGFloat, _ n: Int) -> CGFloat {
+        let r = v.truncatingRemainder(dividingBy: CGFloat(n))
+        return r < 0 ? r + CGFloat(n) : r
     }
 }

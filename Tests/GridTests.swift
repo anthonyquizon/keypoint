@@ -26,20 +26,17 @@ struct GridTests {
     static func main() {
         evenGrid()
         offsetRect()
-        selectionIsCell()
-        selectionWithArrowIsHalf()
         twoKeysReachLastLevelCell()
         legibleLeavesBigGridsAlone()
         legibleGrowsAroundFocus()
         legibleStaysOnScreen()
-        arrowHalves()
+        legibleBringsAWrappedKeyOnScreen()
         inclusiveDragWidensOutward()
-        repeatedArrowHalvesAgain()
-        arrowsStack()
-        arrowsDescribed()
         smallPicksClickAtOnce()
-        nudgeMovesTheSlot()
+        shiftMovesTheKeys()
+        shiftWrapsRound()
         buttonTests()
+        scrollTests()
 
         print(failures == 0 ? "OK — \(checks) checks passed" : "\(failures) of \(checks) checks failed")
         if failures > 0 { exit(1) }
@@ -49,31 +46,18 @@ struct GridTests {
 
     static func evenGrid() {
         let g = Grid(rect: rect)
-        check(g.columnEdges == (0...10).map { CGFloat($0) * 100 }, "even column edges")
-        check(g.rowEdges == [0, 100, 200, 300, 400], "even row edges")
+        check(g.columnLines == (1...9).map { CGFloat($0) * 100 }, "even column lines")
+        check(g.rowLines == [100, 200, 300], "even row lines")
         check(g.cellSize == CGSize(width: 100, height: 100), "cell size")
         check(g.cell(row: 2, col: 3) == CGRect(x: 300, y: 200, width: 100, height: 100), "cell rect")
+        check(g.tiles(of: g.cell(row: 0, col: 9)) == [g.cell(row: 0, col: 9)], "an unshifted cell shows once")
     }
 
     static func offsetRect() {
         let g = Grid(rect: CGRect(x: 200, y: 50, width: 300, height: 80))
-        check(g.columnEdges.first == 200 && g.columnEdges.last == 500, "column edges offset")
-        check(g.rowEdges.first == 50 && g.rowEdges.last == 130, "row edges offset")
-    }
-
-    static func selectionIsCell() {
-        let g = Grid(rect: rect)
-        for (r, c) in [(0, 0), (2, 5), (3, 9)] {
-            check(g.selection(row: r, col: c) == g.cell(row: r, col: c), "key \(r),\(c) = its cell")
-        }
-    }
-
-    static func selectionWithArrowIsHalf() {
-        let g = Grid(rect: rect)
-        let e = g.cell(row: 1, col: 2)
-        for d: Grid.Direction in [.up, .down, .left, .right] {
-            check(g.selection(row: 1, col: 2, arrows: [d]) == Grid.half(of: e, toward: d), "\(d) E = that half of E")
-        }
+        check(g.cell(row: 0, col: 0).minX == 200 && g.cell(row: 0, col: 9).maxX == 500, "columns offset")
+        check(g.cell(row: 0, col: 0).minY == 50 && g.cell(row: 3, col: 0).maxY == 130, "rows offset")
+        check(g.columnLines.first == 230 && g.rowLines.first == 70, "lines offset")
     }
 
     // MARK: - Levels
@@ -91,8 +75,8 @@ struct GridTests {
     static func twoKeysReachLastLevelCell() {
         for screen in screens {
             let top = Grid(rect: CGRect(origin: .zero, size: screen))
-            let l2 = Grid(rect: top.selection(row: 2, col: 3))
-            let target = Grid(rect: l2.selection(row: 2, col: 6))
+            let l2 = Grid(rect: top.cell(row: 2, col: 3))
+            let target = Grid(rect: l2.cell(row: 2, col: 6))
             close(target.rect.width, screen.width / 100, "\(screen): cell width")
             close(target.rect.height, screen.height / 16, "\(screen): cell height")
             close(target.focus.x, screen.width * (0.3 + 0.065), "\(screen): click x")
@@ -127,46 +111,13 @@ struct GridTests {
         check(l.focus == CGPoint(x: r.midX, y: r.midY), "focus still on the selection")
     }
 
-    // MARK: - Arrows
-
-    static func arrowHalves() {
-        let c = CGRect(x: 100, y: 200, width: 40, height: 80)
-        check(Grid.half(of: c, toward: .up) == CGRect(x: 100, y: 200, width: 40, height: 40), "↑ = top half")
-        check(Grid.half(of: c, toward: .down) == CGRect(x: 100, y: 240, width: 40, height: 40), "↓ = bottom half")
-        check(Grid.half(of: c, toward: .left) == CGRect(x: 100, y: 200, width: 20, height: 80), "← = left half")
-        check(Grid.half(of: c, toward: .right) == CGRect(x: 120, y: 200, width: 20, height: 80), "→ = right half")
-        let up = Grid(rect: Grid.half(of: c, toward: .up))
-        check(up.focus == CGPoint(x: 120, y: 220), "↑ E clicks a quarter of the way down E")
-        check(KeyLayout.arrows[126] == .up && KeyLayout.arrows[123] == .left, "arrow key codes")
-    }
-
-    static func repeatedArrowHalvesAgain() {
-        let g = Grid(rect: rect)
-        let e = g.cell(row: 1, col: 2)   // 100 × 100 at (200, 100)
-        check(g.selection(row: 1, col: 2, arrows: [.up]) == Grid.half(of: e, toward: .up), "one arrow = half")
-        check(g.selection(row: 1, col: 2, arrows: [.up, .up])
-              == CGRect(x: 200, y: 100, width: 100, height: 25), "↑ ↑ E = top quarter")
-        check(g.selection(row: 1, col: 2, arrows: [.down, .down])
-              == CGRect(x: 200, y: 175, width: 100, height: 25), "↓ ↓ E = bottom quarter")
-        check(g.selection(row: 1, col: 2, arrows: [.right, .right, .right])
-              == CGRect(x: 287.5, y: 100, width: 12.5, height: 100), "→ → → E = right eighth")
-    }
-
-    static func arrowsStack() {
-        let g = Grid(rect: rect)   // E = 100 × 100 at (200, 100)
-        check(g.selection(row: 1, col: 2, arrows: [.up, .left])
-              == CGRect(x: 200, y: 100, width: 50, height: 50), "↑ ← E = top-left quarter")
-        check(g.selection(row: 1, col: 2, arrows: [.up, .down])
-              == CGRect(x: 200, y: 125, width: 100, height: 25), "↑ ↓ E = 2nd quarter from top")
-        check(g.selection(row: 1, col: 2, arrows: [.down, .up, .down])
-              == CGRect(x: 200, y: 162.5, width: 100, height: 12.5), "↓ ↑ ↓ E = 6th eighth")
-        check(g.selection(row: 1, col: 2, arrows: [.up, .left])
-              == g.selection(row: 1, col: 2, arrows: [.left, .up]), "axes don't depend on order")
-
-        check(Grid.push(.up, onto: [.up, .down]) == [.up, .down, .up], "push stacks")
-        check(Grid.push(.left, onto: [.up, .down, .up]) == [.up, .down, .up, .left], "other axis still free")
-        check(Grid.push(.down, onto: [.up, .down, .up]) == [.up, .down, .up, .down], "4th arrow = a sixteenth")
-        check(Grid.push(.down, onto: [.up, .down, .up, .down]) == nil, "an axis stops at a sixteenth")
+    /// A key shifted over the screen's edge zooms into the part on screen, and its
+    /// centre (where it clicks) stays put.
+    static func legibleBringsAWrappedKeyOnScreen() {
+        let r = CGRect(x: -96, y: 600, width: 192, height: 270)
+        let l = Grid(rect: r).legible(minCell: minCell, within: bounds)
+        check(l.rect == CGRect(x: 0, y: 600, width: 192, height: 270), "moved on screen, same size")
+        check(l.focus == CGPoint(x: 0, y: 735), "focus still the key's centre")
     }
 
     static func smallPicksClickAtOnce() {
@@ -174,25 +125,6 @@ struct GridTests {
         check(Grid.isClickSize(CGRect(x: 0, y: 0, width: 20, height: 300), size: 24), "narrow enough clicks")
         check(Grid.isClickSize(CGRect(x: 0, y: 0, width: 300, height: 10), size: 24), "short enough clicks")
         check(!Grid.isClickSize(CGRect(x: 0, y: 0, width: 30, height: 30), size: 24), "too big both ways zooms")
-        // A 1920 × 1080 screen: an F cell is 192 × 270; ← ← ← ↑ ↑ ↑ ↑ gets it to 24 × ~17.
-        let g = Grid(rect: CGRect(x: 0, y: 0, width: 1920, height: 1080))
-        let pick = g.selection(row: 2, col: 3, arrows: [.left, .left, .left, .up, .up, .up, .up])
-        check(Grid.isClickSize(pick, size: 24), "enough arrows on level 1 click at once")
-    }
-
-    static func arrowsDescribed() {
-        check(Grid.describe([]) == "", "no arrows")
-        check(Grid.describe([.up]) == "top half", "↑")
-        check(Grid.describe([.down, .down]) == "bottom quarter", "↓ ↓")
-        check(Grid.describe([.up, .down]) == "2nd quarter from top", "↑ ↓")
-        check(Grid.describe([.down, .up]) == "3rd quarter from top", "↓ ↑")
-        check(Grid.describe([.up, .left]) == "top half · left half", "↑ ←")
-        check(Grid.describe([.right, .left, .right]) == "6th eighth from left", "→ ← →")
-        check(Grid.describe([.up, .up, .down, .up]) == "3rd sixteenth from top", "↑ ↑ ↓ ↑")
-        check(Grid.describe([.down, .up, .down, .down]) == "12th sixteenth from top", "↓ ↑ ↓ ↓")
-        check(Grid.describe([.down, .down, .down, .down]) == "bottom sixteenth", "↓ ×4")
-        check(Grid.describe([.down, .down, .down, .up]) == "15th sixteenth from top", "↓ ↓ ↓ ↑")
-        check(Grid.describe([.down, .up, .up, .down]) == "10th sixteenth from top", "↓ ↑ ↑ ↓")
     }
 
     static func inclusiveDragWidensOutward() {
@@ -212,15 +144,42 @@ struct GridTests {
         close(r.from.x, 104, "previous line start"); close(r.to.x, 296, "previous line end")
     }
 
-    static func nudgeMovesTheSlot() {
-        check(Grid.nudge([.up], toward: .down) == [.down], "top half ⇧↓ = bottom half")
-        check(Grid.nudge([.up, .up], toward: .down) == [.up, .down], "top quarter ⇧↓ = 2nd quarter")
-        check(Grid.nudge([.up, .down], toward: .down) == [.down, .up], "2nd quarter ⇧↓ = 3rd quarter")
-        check(Grid.nudge([.up, .left, .down], toward: .down) == [.down, .left, .up],
-              "other axis keeps its place")
-        check(Grid.nudge([.left], toward: .right) == [.right], "left half ⇧→ = right half")
-        check(Grid.nudge([.down, .down], toward: .down) == nil, "bottom quarter can't go lower")
-        check(Grid.nudge([.left], toward: .up) == nil, "no vertical arrows = nothing to nudge")
-        check(Grid.nudge([], toward: .left) == nil, "no arrows = nothing to nudge")
+    // MARK: - Shifting
+
+    static func shiftMovesTheKeys() {
+        let g = Grid(rect: rect)   // cells 100 × 100
+        let r = g.shifted(.right, by: 0.25)
+        check(r.cell(row: 2, col: 3) == CGRect(x: 325, y: 200, width: 100, height: 100), "→ a quarter = 25pt right")
+        check(r.columnLines == (0...9).map { CGFloat($0) * 100 + 25 }, "every line moves; none on the edge")
+        check(r.rowLines == g.rowLines, "rows untouched")
+        let d = g.shifted(.down, by: 0.5)
+        check(d.cell(row: 0, col: 0) == CGRect(x: 0, y: 50, width: 100, height: 100), "↓ a half = 50pt down")
+        check(g.shifted(.left, by: 0.125).shifted(.right, by: 0.125) == g, "← then → = back in place")
+        check(g.shifted(.up, by: 0.5).shifted(.left, by: 2).unshifted == g, "unshifted = back in place")
+        check(g.shifted(.right, by: 10) == g && g.shifted(.up, by: 4) == g, "a whole grid round = no shift")
+        check(KeyLayout.arrows[126] == .up && KeyLayout.arrows[123] == .left, "arrow key codes")
+    }
+
+    /// A key pushed past one edge comes back on the other, and its centre (where it
+    /// clicks) is always inside the region.
+    static func shiftWrapsRound() {
+        let g = Grid(rect: rect)
+        let r = g.shifted(.right, by: 0.75)   // "0": 975…1075, over the right edge
+        let zero = r.cell(row: 0, col: 9)
+        check(zero == CGRect(x: -25, y: 0, width: 100, height: 100), "past the right edge = back on the left")
+        check(r.tiles(of: zero) == [zero, zero.offsetBy(dx: 1000, dy: 0)], "shows on both edges")
+        check(r.cell(row: 0, col: 0) == CGRect(x: 75, y: 0, width: 100, height: 100), "1 moves right as usual")
+        let up = g.shifted(.up, by: 1)
+        check(up.cell(row: 0, col: 0) == CGRect(x: 0, y: 300, width: 100, height: 100), "a row up: the top row wraps to the bottom")
+        check(up.cell(row: 1, col: 0) == CGRect(x: 0, y: 0, width: 100, height: 100), "and Q comes to the top")
+        for n in 0..<32 {
+            let s = g.shifted(.left, by: CGFloat(n) * 0.375).shifted(.down, by: CGFloat(n) * 0.625)
+            for row in 0..<KeyLayout.rowCount {
+                for col in 0..<KeyLayout.columnCount {
+                    let c = s.cell(row: row, col: col)
+                    check(rect.contains(CGPoint(x: c.midX, y: c.midY)), "shift \(n): \(row),\(col) centre inside")
+                }
+            }
+        }
     }
 }

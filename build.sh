@@ -8,7 +8,8 @@ cd "$(dirname "$0")"
 if [ "${1:-}" = "test" ]; then
   mkdir -p build
   swiftc -swift-version 5 -parse-as-library \
-    Sources/Grid.swift Sources/KeyLayout.swift Sources/Buttons.swift Tests/*.swift -o build/tests
+    Sources/Grid.swift Sources/KeyLayout.swift Sources/Buttons.swift Sources/Scroll.swift \
+    Tests/*.swift -o build/tests
   exec build/tests
 fi
 

@@ -22,6 +22,10 @@ final class OverlayController {
     /// Where the drag starts (view coordinates), once picked.
     private var dragStart: CGPoint?
 
+    /// The scroll anchor (view coordinates), set with ⌥ + a key. While it's set,
+    /// each key scrolls by how far that key is from it.
+    private var scrollAnchor: CGPoint?
+
     /// Number of key presses (levels) before the click fires.
     /// Change with:  defaults write local.keypoint levels -int 3
     var maxLevels: Int {
@@ -44,21 +48,29 @@ final class OverlayController {
     /// The next key press clicks rather than zooming.
     private var isFinalLevel: Bool { history.count + 1 >= maxLevels }
 
-    /// A key's selection at most this many points either way clicks at once
-    /// instead of zooming (so a few arrows can finish a pick early).
+    /// A key's cell at most this many points either way clicks at once
+    /// instead of zooming (e.g. with `levels` set to 3).
     /// Change with:  defaults write local.keypoint clickSize -float 80
     var clickSize: CGFloat {
         let v = UserDefaults.standard.object(forKey: "clickSize") as? Double
         return CGFloat(v ?? 40)
     }
 
-    /// The next key clicks: the last level, or the arrows make its pick small enough.
-    /// (Cells are all the same size, so any one tells.)
-    private var nextKeyClicks: Bool {
-        isFinalLevel || Grid.isClickSize(grid.selection(row: 0, col: 0, arrows: pending), size: clickSize)
+    /// Fraction of a cell an arrow shifts the grid; ⇧ + arrow shifts four times as
+    /// far (half a cell by default).
+    /// Change with:  defaults write local.keypoint shiftStep -float 0.125
+    var shiftStep: CGFloat {
+        let v = UserDefaults.standard.object(forKey: "shiftStep") as? Double
+        return CGFloat(v ?? 0.125)
     }
 
-    /// Button a click would use now: the Tab-chosen one, or middle with ⌥ held.
+    /// The next key clicks: the last level, or its cell is small enough.
+    /// (Cells are all the same size, so any one tells.)
+    private var nextKeyClicks: Bool {
+        isFinalLevel || Grid.isClickSize(grid.cell(row: 0, col: 0), size: clickSize)
+    }
+
+    /// Button a click would use now: the Tab-chosen one (left for a highlight).
     var currentButton: Mouse.Button { choice.current(held: held).button }
 
     /// Modifiers held right now, from the last flags-changed event.
@@ -68,7 +80,6 @@ final class OverlayController {
     /// highlight). `button` overrides the chosen one.
     func clickNow(button: Mouse.Button? = nil) {
         guard isActive else { return }
-        clearPending()
         finish(button: button)
     }
 
@@ -112,6 +123,7 @@ final class OverlayController {
         choice = ModeChoice()
         held = CGEventSource.flagsState(.combinedSessionState)
         dragStart = nil
+        scrollAnchor = nil
         refresh()
 
         win.orderFrontRegardless()
@@ -119,9 +131,9 @@ final class OverlayController {
     }
 
     func cancel() {
-        clearPending()
         choice = ModeChoice()
         dragStart = nil
+        scrollAnchor = nil
         guard isActive else { return }
         isActive = false
         window?.orderOut(nil)
@@ -145,26 +157,24 @@ final class OverlayController {
         if !dragMode { dragStart = nil }
     }
 
-    /// Arrows pressed before a key, in order: each halves the key's cell again.
-    private var pending: [Grid.Direction] = []
-
     func handleKey(_ code: CGKeyCode, flags: CGEventFlags) {
-        // ⌃ / ⌥ held on a press switches to its mode, overriding the current one.
+        // ⌃ held on a press switches to highlight, overriding the current mode.
         choice.keyPressed(flags: flags)
         modeChanged()
 
         switch code {
         case KeyLayout.escape:
-            clearPending()
             cancel()
         case KeyLayout.delete:
-            if !pending.isEmpty {
-                // Undo the last arrow.
-                pending.removeLast()
+            if scrollAnchor != nil {
+                // Drop the scroll anchor.
+                scrollAnchor = nil
                 refresh()
-                return
-            }
-            if let prev = history.popLast() {
+            } else if grid.offset != .zero {
+                // Put the shifted keys back.
+                grid = grid.unshifted
+                refresh()
+            } else if let prev = history.popLast() {
                 grid = prev
                 moveCursor(to: global(grid.focus))
                 refresh()
@@ -187,42 +197,56 @@ final class OverlayController {
             choice.cycle()
             modeChanged()
             refresh()
-        case _ where KeyLayout.arrows[code] != nil && flags.contains(.maskShift):
-            // ⇧ + arrow: move the shaded slot the arrows picked one slot that way
-            // (top quarter → 2nd quarter), within the cell.
-            guard let dir = KeyLayout.arrows[code], let next = Grid.nudge(pending, toward: dir) else {
-                NSSound.beep()   // no arrows on that axis, or already at that edge
-                return
-            }
-            pending = next
-            refresh()
         case _ where KeyLayout.arrows[code] != nil:
-            // Arrows then a key: each arrow halves the key's cell again, in
-            // order (↑ E = top half, ↑ ← E = top-left quarter, ↑ ↓ E = 2nd quarter).
-            guard let dir = KeyLayout.arrows[code], let next = Grid.push(dir, onto: pending) else {
-                NSSound.beep()   // that axis is already down to an eighth
-                return
-            }
-            pending = next
+            // Arrows shift the grid a step that way (⇧: four steps). It wraps: keys
+            // pushed past one edge come back on the other.
+            guard let dir = KeyLayout.arrows[code] else { return }
+            let steps: CGFloat = flags.contains(.maskShift) ? 4 : 1
+            grid = grid.shifted(dir, by: shiftStep * steps)
             refresh()
         default:
             guard let pos = KeyLayout.position(of: code) else {
                 NSSound.beep()
                 return
             }
-            let arrows = pending
-            clearPending()
-            enter(Grid(rect: grid.selection(row: pos.row, col: pos.col, arrows: arrows)))
+            let cell = grid.cell(row: pos.row, col: pos.col)
+            let centre = CGPoint(x: cell.midX, y: cell.midY)
+            switch KeyAction(flags: flags, clicks: nextKeyClicks, anchored: scrollAnchor != nil) {
+            case .zoom:
+                enter(Grid(rect: cell))
+            case .click:
+                // ⌘ + key (or any key on the last level): click its centre without zooming in.
+                enter(Grid(rect: cell), now: true)
+            case .anchor:
+                setAnchor(centre)
+            case .scroll:
+                scroll(toward: centre)
+            case .move:
+                // ⇧ + key: just move the mouse to its centre (tap ⌘ to click there).
+                grid.focus = centre
+                moveCursor(to: global(centre))
+                refresh()
+            }
         }
     }
 
-    private func clearPending() {
-        pending = []
+    /// ⌥ + key: set the scroll anchor there (or move it). ⌥ + the anchor's own key drops it.
+    private func setAnchor(_ point: CGPoint) {
+        scrollAnchor = Scroll.anchor(scrollAnchor, pressedAt: point)
+        refresh()
     }
 
-    /// Move to `next`: click at its focus on the last level, otherwise zoom into it.
-    private func enter(_ next: Grid) {
-        let clicks = isFinalLevel || Grid.isClickSize(next.rect, size: clickSize)
+    /// A key while anchored: scroll the view under the anchor from it toward `point`, by
+    /// as far (what was at `point` ends up at the anchor). The anchor stays, so every
+    /// key scrolls again; the anchor's own key does nothing.
+    private func scroll(toward point: CGPoint) {
+        guard let anchor = scrollAnchor, let delta = Scroll.delta(from: anchor, to: point) else { return }
+        Mouse.scroll(at: global(anchor), by: delta)
+    }
+
+    /// Move to `next`: click at its focus on the last level (or `now`), otherwise zoom into it.
+    private func enter(_ next: Grid, now: Bool = false) {
+        let clicks = now || isFinalLevel || Grid.isClickSize(next.rect, size: clickSize)
         history.append(grid)
         grid = next
 
@@ -238,16 +262,17 @@ final class OverlayController {
 
     // MARK: - Private
 
-    /// Redraw. A ⌃ / ⌥ held right now shows its mode over the chosen one.
+    /// Redraw. A ⌃ held right now shows highlight over the chosen mode, and ⌘ / ⌥ / ⇧
+    /// what the next key does.
     private func refresh() {
         view.grid = grid
         view.level = history.count
-        view.isFinal = nextKeyClicks
+        view.next = KeyAction(flags: held, clicks: nextKeyClicks, anchored: scrollAnchor != nil)
         let shown = choice.current(held: held)
         view.button = shown.button
-        view.pending = pending
         view.dragMode = shown == .highlight
         view.dragStart = dragStart
+        view.scrollAnchor = scrollAnchor
         view.needsDisplay = true
     }
 
@@ -362,6 +387,22 @@ enum Mouse {
         }
     }
 
+    /// Scroll whatever is under `p` by `delta` points, the way the view moves (y down:
+    /// a positive dy shows what's further down). Sent as a run of small steps, like a swipe.
+    static func scroll(at p: CGPoint, by delta: CGVector) {
+        move(to: p)
+        for (i, wheel) in Scroll.wheelSteps(delta, count: 10).enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i + 1) * 0.01) {
+                let e = CGEvent(scrollWheelEvent2Source: source, units: .pixel, wheelCount: 2,
+                                wheel1: wheel.wheel1, wheel2: wheel.wheel2, wheel3: 0)
+                // Clear modifiers so the ⌥ still held doesn't change how the app scrolls.
+                e?.flags = []
+                e?.location = p
+                e?.post(tap: .cghidEventTap)
+            }
+        }
+    }
+
     private static func post(_ type: CGEventType, at p: CGPoint, button: CGMouseButton, clickState: Int) {
         let e = CGEvent(mouseEventSource: source, mouseType: type,
                         mouseCursorPosition: p, mouseButton: button)
@@ -377,11 +418,11 @@ enum Mouse {
 final class GridView: NSView {
     var grid = Grid(rect: .zero)
     var level = 0
-    var isFinal = false
+    var next = KeyAction.zoom
     var button = Mouse.Button.left
-    var pending: [Grid.Direction] = []
     var dragMode = false
     var dragStart: CGPoint?
+    var scrollAnchor: CGPoint?
 
     /// Accent for the current mode: green highlight, red right-click, purple middle, blue click.
     private var accent: NSColor {
@@ -401,6 +442,13 @@ final class GridView: NSView {
     override var isFlipped: Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
+        // Scrolling: hide the grid so you can see what scrolls. Its keys still work.
+        if let p = scrollAnchor {
+            drawMark(at: p, color: .systemOrange)
+            drawBar("SCROLL · \(stage) · ⌥ key move the anchor · ⌘ key click · ⌫ stop · esc cancel")
+            return
+        }
+
         let region = grid.rect
 
         // Dim everything outside the active region.
@@ -413,40 +461,30 @@ final class GridView: NSView {
         NSColor.black.withAlphaComponent(0.18).setFill()
         region.fill()
 
+        // The keys, clipped to the region: a key shifted over one edge shows on the other.
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(rect: region).addClip()
+
         // Home row tint (A S D F … ;) so you can orient quickly.
         NSColor.systemBlue.withAlphaComponent(0.10).setFill()
         let home = grid.cell(row: KeyLayout.homeRow, col: 0)
-        CGRect(x: region.minX, y: home.minY, width: region.width, height: home.height).fill()
-
-        // Arrows pressed, waiting for a key: shade where they land in every cell.
-        if !pending.isEmpty {
-            (modeTint ?? .systemYellow).withAlphaComponent(0.25).setFill()
-            for r in 0..<KeyLayout.rowCount {
-                for c in 0..<KeyLayout.columnCount {
-                    grid.selection(row: r, col: c, arrows: pending).fill()
-                }
-            }
+        for band in grid.tiles(of: CGRect(x: region.minX, y: home.minY, width: region.width, height: home.height)) {
+            band.fill()
         }
 
         // Grid lines.
         let lines = NSBezierPath()
-        for x in grid.columnEdges.dropFirst().dropLast() {
+        for x in grid.columnLines {
             lines.move(to: CGPoint(x: x, y: region.minY))
             lines.line(to: CGPoint(x: x, y: region.maxY))
         }
-        for y in grid.rowEdges.dropFirst().dropLast() {
+        for y in grid.rowLines {
             lines.move(to: CGPoint(x: region.minX, y: y))
             lines.line(to: CGPoint(x: region.maxX, y: y))
         }
         lines.lineWidth = 1
         NSColor.white.withAlphaComponent(0.35).setStroke()
         lines.stroke()
-
-        // Region border.
-        let border = NSBezierPath(rect: region.insetBy(dx: 0.5, dy: 0.5))
-        border.lineWidth = level == 0 ? 0 : 2
-        accent.setStroke()
-        if level > 0 { border.stroke() }
 
         // Key labels.
         let pill = (modeTint ?? .black).withAlphaComponent(0.6)
@@ -460,37 +498,61 @@ final class GridView: NSView {
                 let text = NSAttributedString(string: key.label, attributes: attrs)
                 let size = text.size()
                 let pad = max(2, fontSize * 0.25)
-                let box = CGRect(x: cell.midX - size.width / 2 - pad,
-                                 y: cell.midY - size.height / 2 - pad / 2,
-                                 width: size.width + pad * 2,
-                                 height: size.height + pad)
-                pill.setFill()
-                NSBezierPath(roundedRect: box, xRadius: pad, yRadius: pad).fill()
-                text.draw(at: CGPoint(x: box.minX + pad, y: box.minY + pad / 2))
+                for tile in grid.tiles(of: cell) {
+                    let box = CGRect(x: tile.midX - size.width / 2 - pad,
+                                     y: tile.midY - size.height / 2 - pad / 2,
+                                     width: size.width + pad * 2,
+                                     height: size.height + pad)
+                    pill.setFill()
+                    NSBezierPath(roundedRect: box, xRadius: pad, yRadius: pad).fill()
+                    text.draw(at: CGPoint(x: box.minX + pad, y: box.minY + pad / 2))
+                }
             }
         }
+        NSGraphicsContext.restoreGraphicsState()
 
-        // Highlight start, once picked.
-        if let p = dragStart {
-            let ring = NSBezierPath(ovalIn: CGRect(x: p.x - 9, y: p.y - 9, width: 18, height: 18))
-            ring.lineWidth = 3
-            NSColor.white.setStroke()
-            ring.stroke()
-            NSColor.systemGreen.setFill()
-            NSBezierPath(ovalIn: CGRect(x: p.x - 5, y: p.y - 5, width: 10, height: 10)).fill()
-        }
+        // Region border.
+        let border = NSBezierPath(rect: region.insetBy(dx: 0.5, dy: 0.5))
+        border.lineWidth = level == 0 ? 0 : 2
+        accent.setStroke()
+        if level > 0 { border.stroke() }
+
+        // Highlight start, once picked, and the scroll anchor, once set.
+        if let p = dragStart { drawMark(at: p, color: .systemGreen) }
+        if let p = scrollAnchor { drawMark(at: p, color: .systemOrange) }
 
         drawHint()
+    }
+
+    private func drawMark(at p: CGPoint, color: NSColor) {
+        let ring = NSBezierPath(ovalIn: CGRect(x: p.x - 9, y: p.y - 9, width: 18, height: 18))
+        ring.lineWidth = 3
+        NSColor.white.setStroke()
+        ring.stroke()
+        color.setFill()
+        NSBezierPath(ovalIn: CGRect(x: p.x - 5, y: p.y - 5, width: 10, height: 10)).fill()
+    }
+
+    /// What the next key does, for the hint bar.
+    private var stage: String {
+        let action = !dragMode ? "clicks" : dragStart == nil ? "sets start" : "highlights"
+        return switch next {
+        case .zoom: "next key zooms"
+        case .click: "next key \(action)"
+        case .anchor: scrollAnchor == nil ? "next key sets the scroll anchor" : "next key moves the anchor"
+        case .scroll: "next key scrolls from the anchor toward it"
+        case .move: "next key moves the mouse"
+        }
     }
 
     private func drawHint() {
         let mode = dragMode ? (dragStart == nil ? "HIGHLIGHT · pick start" : "HIGHLIGHT · pick end")
             : button == .right ? "RIGHT CLICK" : button == .middle ? "MIDDLE CLICK" : "left click"
-        let action = !dragMode ? "clicks" : dragStart == nil ? "sets start" : "highlights"
-        let stage = isFinal ? "next key \(action)" : "next key zooms"
-        let half = pending.isEmpty ? ""
-            : " · \(pending.map(\.symbol).joined()) \(Grid.describe(pending))"
-        let s = "Level \(level + 1) · \(stage)\(half) · \(mode) · key = its cell · arrows then key = halve the cell, in order · ⇥ cycle right / middle / left · ⇧ arrow nudge the shading · ⌥ middle (hold) · ⌃ highlight (hold or tap) · ⌘ click here · space middle · ⏎ right · ⌫ back · esc cancel"
+        drawBar("Level \(level + 1) · \(stage) · \(mode) · key = its cell · ⌘ key click it now · ⇧ key move the mouse there · ⌥ key scroll anchor, then keys scroll toward them · arrows shift the grid (⇧ further) · ⇥ cycle right / middle / left · ⌃ highlight (hold or tap) · tap ⌘ click here · space middle · ⏎ right · ⌫ back · esc cancel")
+    }
+
+    /// The hint bar along the bottom of the screen.
+    private func drawBar(_ s: String) {
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
             .foregroundColor: NSColor.white,

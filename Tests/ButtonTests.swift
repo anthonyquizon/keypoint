@@ -7,6 +7,7 @@ extension GridTests {
         defaultsToLeft()
         heldModifiersPickButton()
         keyPressWithModifierSticks()
+        modifiersPickKeyAction()
         tapsToggleAndExclude()
         tabCycles()
         loneTapFires()
@@ -26,12 +27,12 @@ extension GridTests {
         let c = ModeChoice()
         check(c.current(held: .maskShift) == .left, "⇧ held = still left (it nudges)")
         check(c.current(held: .maskControl) == .highlight, "⌃ held = highlight")
-        check(c.current(held: .maskAlternate) == .middle, "⌥ held = middle")
+        check(c.current(held: .maskAlternate) == .left, "⌥ held = still left (it scrolls)")
         check(c.current(held: .maskCommand) == .left, "⌘ held = still left")
 
         var m = ModeChoice()
         m.cycle()
-        check(m.current(held: .maskAlternate) == .middle, "held ⌥ shows over a Tab right")
+        check(m.current(held: .maskControl) == .highlight, "held ⌃ shows over a Tab right")
         check(m.current(held: []) == .right, "released, back to the Tab mode")
     }
 
@@ -40,13 +41,32 @@ extension GridTests {
         c.keyPressed(flags: .maskShift)
         check(c.mode == .left, "⇧ + key picks no mode")
         c.keyPressed(flags: .maskAlternate)
-        check(c.mode == .middle, "⌥ + key sticks after release")
-        c.keyPressed(flags: [])
-        check(c.mode == .middle, "a later plain key keeps it")
+        check(c.mode == .left, "⌥ + key picks no mode (it scrolls)")
         c.keyPressed(flags: .maskControl)
-        check(c.mode == .highlight, "⌃ + key overrides middle")
-        c.keyPressed(flags: .maskAlternate)
-        check(c.mode == .middle, "⌥ + key overrides highlight")
+        check(c.mode == .highlight, "⌃ + key sticks after release")
+        c.keyPressed(flags: [])
+        check(c.mode == .highlight, "a later plain key keeps it")
+
+        var tab = ModeChoice()
+        tab.cycle()
+        tab.keyPressed(flags: .maskControl)
+        check(tab.mode == .highlight, "⌃ + key overrides a Tab right")
+    }
+
+    static func modifiersPickKeyAction() {
+        check(KeyAction(flags: [], clicks: false) == .zoom, "plain key zooms")
+        check(KeyAction(flags: [], clicks: true) == .click, "plain key clicks on the last level")
+        check(KeyAction(flags: .maskCommand, clicks: false) == .click, "⌘ + key clicks now")
+        check(KeyAction(flags: .maskAlternate, clicks: true) == .anchor, "⌥ + key sets the anchor, even on the last level")
+        check(KeyAction(flags: .maskShift, clicks: true) == .move, "⇧ + key moves the mouse, even on the last level")
+        check(KeyAction(flags: [.maskCommand, .maskShift, .maskAlternate], clicks: false) == .click, "⌘ beats ⌥ and ⇧")
+        check(KeyAction(flags: [.maskAlternate, .maskShift], clicks: false) == .anchor, "⌥ beats ⇧")
+        check(KeyAction(flags: [], clicks: false, anchored: true) == .scroll, "anchored: a plain key scrolls")
+        check(KeyAction(flags: [], clicks: true, anchored: true) == .scroll, "anchored: even on the last level")
+        check(KeyAction(flags: .maskAlternate, clicks: false, anchored: true) == .anchor, "anchored: ⌥ + key moves the anchor")
+        check(KeyAction(flags: .maskCommand, clicks: false, anchored: true) == .click, "anchored: ⌘ + key still clicks")
+        check(KeyAction(flags: .maskShift, clicks: false, anchored: true) == .move, "anchored: ⇧ + key still moves the mouse")
+        check(KeyAction(flags: .maskControl, clicks: false) == .zoom, "⌃ + key still zooms (it picks highlight)")
     }
 
     static func tapsToggleAndExclude() {
