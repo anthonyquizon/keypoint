@@ -31,8 +31,11 @@ Hold a modifier to do something else with the key instead of zooming in:
 
 For more precision, the **arrows shift the grid** an eighth of a cell that way (`⇧` +
 arrow: half a cell). The grid wraps round, so keys pushed off one edge come back on the
-other, and every key still clicks its centre. `⌫` puts the keys back
-(`defaults write local.keypoint shiftStep -float 0.125` sets the step; `⇧` is four steps).
+other, and every key still clicks its centre. Once you've zoomed in, the arrows **move the
+whole box** instead: an eighth of its own size that way (`⇧`: half), keys and mouse with it,
+stopping at the screen's edge — handy when what you want sits just across its border. `⌫`
+puts the keys (or the box) back (`defaults write local.keypoint shiftStep -float 0.125`
+sets the step; `⇧` is four steps).
 
 A key whose cell is small enough (40pt or less either way — `defaults write local.keypoint
 clickSize -float 40`) clicks its centre right away instead of zooming another level, e.g.
@@ -63,11 +66,11 @@ overrides the current mode. Leaving highlight drops a picked start.
 | `⌘` + key | click that key's centre now, without zooming in |
 | `⇧` + key | move the mouse to that key's centre |
 | `⌃` + key | set the scroll anchor there and hide the grid; then every key scrolls from the anchor toward that key, by the distance between them |
-| arrow | shift the grid an eighth of a cell that way; it wraps round the edges |
-| `⇧` + arrow | shift it half a cell |
+| arrow | shift the keys an eighth of a cell that way; they wrap round the edges. Zoomed in: move the whole box an eighth of its size |
+| `⇧` + arrow | shift the keys half a cell (zoomed in: move the box half its size) |
 | `Space` | middle-click now at the centre of the current box |
 | `Return` | right-click now at the centre of the current box |
-| `⌫` | drop the scroll anchor, put shifted keys back, or go back a level |
+| `⌫` | drop the scroll anchor, put shifted keys (or a moved box) back, or go back a level |
 | `Esc` | cancel |
 
 Keys are matched by physical position, so the grid works the same on Dvorak, Colemak,
@@ -123,7 +126,7 @@ project needed).
 ```sh
 defaults write local.keypoint levels -int 2   # key presses per click (default 2)
 defaults write local.keypoint highlightNudge -float 4   # points each highlight end moves outward
-defaults write local.keypoint shiftStep -float 0.125    # fraction of a cell an arrow shifts the grid
+defaults write local.keypoint shiftStep -float 0.125    # fraction of a cell an arrow shifts the keys (zoomed in: of the box it moves)
 ```
 
 Takes effect the next time the grid opens. Highlights widen each end by `highlightNudge`
@@ -134,7 +137,7 @@ for large text, or set it to 0 for exact points.
 
 - `Sources/KeyLayout.swift` — grid keys and key codes
 - `Sources/KeyTap.swift` — global key hook (⌘ / ⌥ tap detection, swallowing keys while active)
-- `Sources/Grid.swift` — grid maths: cells, shifting and wrapping, minimum cell size
+- `Sources/Grid.swift` — grid maths: cells, shifting and wrapping, sliding the box, minimum cell size
 - `Sources/Overlay.swift` — selection logic, clicking, drawing the grid
 - `Sources/main.swift` — menu bar item and permission handling
 - `Sources/Buttons.swift` — click modes, what a key press does by its modifiers, modifier taps

@@ -56,8 +56,9 @@ final class OverlayController {
         return CGFloat(v ?? 40)
     }
 
-    /// Fraction of a cell an arrow shifts the grid; ⇧ + arrow shifts four times as
-    /// far (half a cell by default).
+    /// Fraction of a cell an arrow shifts the keys; ⇧ + arrow shifts four times as
+    /// far (half a cell by default). Drilled down, the fraction of the box an arrow
+    /// moves it.
     /// Change with:  defaults write local.keypoint shiftStep -float 0.125
     var shiftStep: CGFloat {
         let v = UserDefaults.standard.object(forKey: "shiftStep") as? Double
@@ -170,9 +171,11 @@ final class OverlayController {
                 // Drop the scroll anchor.
                 scrollAnchor = nil
                 refresh()
-            } else if grid.offset != .zero {
-                // Put the shifted keys back.
+            } else if grid.isShifted {
+                // Put the shifted keys back, or the moved box back where it was picked.
+                let slid = grid.slide != .zero
                 grid = grid.unshifted
+                if slid { moveCursor(to: global(grid.focus)) }
                 refresh()
             } else if let prev = history.popLast() {
                 grid = prev
@@ -198,11 +201,17 @@ final class OverlayController {
             modeChanged()
             refresh()
         case _ where KeyLayout.arrows[code] != nil:
-            // Arrows shift the grid a step that way (⇧: four steps). It wraps: keys
-            // pushed past one edge come back on the other.
+            // Arrows shift the keys a step that way (⇧: four steps). It wraps: keys
+            // pushed past one edge come back on the other. Drilled down, they move the
+            // whole box instead (a step of its own size), and the mouse with it.
             guard let dir = KeyLayout.arrows[code] else { return }
-            let steps: CGFloat = flags.contains(.maskShift) ? 4 : 1
-            grid = grid.shifted(dir, by: shiftStep * steps)
+            let step = shiftStep * (flags.contains(.maskShift) ? 4 : 1)
+            if history.isEmpty {
+                grid = grid.shifted(dir, by: step)
+            } else {
+                grid = grid.slid(dir, by: step, within: view.bounds)
+                moveCursor(to: global(grid.focus))
+            }
             refresh()
         default:
             guard let pos = KeyLayout.position(of: code) else {
@@ -548,7 +557,7 @@ final class GridView: NSView {
     private func drawHint() {
         let mode = dragMode ? (dragStart == nil ? "HIGHLIGHT · pick start" : "HIGHLIGHT · pick end")
             : button == .right ? "RIGHT CLICK" : button == .middle ? "MIDDLE CLICK" : "left click"
-        drawBar("Level \(level + 1) · \(stage) · \(mode) · key = its cell · ⌘ key click it now · ⇧ key move the mouse there · ⌃ key scroll anchor, then keys scroll toward them · arrows shift the grid (⇧ further) · ⇥ cycle right / middle / left · ⌥ highlight (hold or tap) · tap ⌘ click here · space middle · ⏎ right · ⌫ back · esc cancel")
+        drawBar("Level \(level + 1) · \(stage) · \(mode) · key = its cell · ⌘ key click it now · ⇧ key move the mouse there · ⌃ key scroll anchor, then keys scroll toward them · \(level == 0 ? "arrows shift the keys" : "arrows move the box") (⇧ further) · ⇥ cycle right / middle / left · ⌥ highlight (hold or tap) · tap ⌘ click here · space middle · ⏎ right · ⌫ back · esc cancel")
     }
 
     /// The hint bar along the bottom of the screen.

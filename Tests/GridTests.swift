@@ -35,6 +35,8 @@ struct GridTests {
         smallPicksClickAtOnce()
         shiftMovesTheKeys()
         shiftWrapsRound()
+        slideMovesTheBox()
+        slideStopsAtTheEdge()
         buttonTests()
         scrollTests()
 
@@ -181,5 +183,42 @@ struct GridTests {
                 }
             }
         }
+    }
+
+    // MARK: - Sliding (drilled down)
+
+    static let box = CGRect(x: 400, y: 100, width: 200, height: 80)
+
+    /// The whole box moves a fraction of its own size, keys and focus with it; the keys
+    /// don't shift inside it.
+    static func slideMovesTheBox() {
+        let g = Grid(rect: box)
+        let r = g.slid(.right, by: 0.125, within: rect)
+        check(r.rect == box.offsetBy(dx: 25, dy: 0), "→ an eighth of the box = 25pt right")
+        check(r.focus == CGPoint(x: 525, y: 140), "focus goes with it")
+        check(r.cell(row: 2, col: 3) == g.cell(row: 2, col: 3).offsetBy(dx: 25, dy: 0), "keys go with it")
+        check(r.offset == .zero && r.columnLines == g.columnLines.map { $0 + 25 }, "keys not shifted inside it")
+        check(g.slid(.down, by: 0.5, within: rect).rect == box.offsetBy(dx: 0, dy: 40), "↓ half the box = 40pt down")
+        check(g.slid(.left, by: 0.125, within: rect).slid(.right, by: 0.125, within: rect) == g, "← then → = back in place")
+        check(!g.isShifted && r.isShifted, "slid counts as shifted")
+        check(r.slid(.up, by: 0.5, within: rect).unshifted == g, "unshifted = back where it was picked")
+
+        var moved = g
+        moved.focus = CGPoint(x: 410, y: 110)   // ⇧ + key moved the mouse
+        check(moved.slid(.left, by: 0.25, within: rect).focus == CGPoint(x: 360, y: 110), "a moved focus goes with it too")
+    }
+
+    /// The box stops at the screen's edge rather than going off it.
+    static func slideStopsAtTheEdge() {
+        let g = Grid(rect: box)
+        var u = g
+        for _ in 0..<3 { u = u.slid(.up, by: 0.5, within: rect) }   // 100 → 60 → 20 → 0
+        check(u.rect == CGRect(x: 400, y: 0, width: 200, height: 80), "stops at the top")
+        check(u.focus == CGPoint(x: 500, y: 40), "focus stops with it")
+        check(u.unshifted == g, "and still goes back where it was picked")
+        let corner = Grid(rect: CGRect(x: 800, y: 320, width: 200, height: 80))
+        check(corner.slid(.right, by: 0.5, within: rect) == corner, "already at the right edge: stays")
+        check(corner.slid(.down, by: 0.5, within: rect) == corner, "already at the bottom: stays")
+        check(!corner.slid(.right, by: 0.5, within: rect).isShifted, "not moved = not shifted")
     }
 }

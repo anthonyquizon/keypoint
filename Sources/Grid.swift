@@ -2,11 +2,14 @@ import CoreGraphics
 
 /// The keyboard-shaped grid laid over a region: 10 × 4 even cells. Arrows shift the
 /// keys across it, and it wraps: a key pushed past one edge comes back on the other.
+/// Drilled down, arrows slide the whole grid instead (see `slid`).
 struct Grid: Equatable {
-    let rect: CGRect
+    private(set) var rect: CGRect
     /// How far the keys are shifted, in cells (x right, y down), wrapped to within
     /// one grid's width / height.
     private(set) var offset = CGVector.zero
+    /// How far `slid` has moved the whole grid (points) since it was picked.
+    private(set) var slide = CGVector.zero
     /// What was actually selected: where the cursor goes and where Space
     /// clicks. The centre of `rect` unless `legible` grew the grid around it,
     /// or ⇧ + a key moved the mouse to that key.
@@ -64,10 +67,36 @@ struct Grid: Equatable {
         return g
     }
 
-    /// This grid with its keys back in place.
+    /// This grid, keys, focus and all, moved `fraction` of its own width / height
+    /// toward `direction`, stopping at the edge of `bounds`. Its keys stay put inside it.
+    func slid(_ direction: Direction, by fraction: CGFloat, within bounds: CGRect) -> Grid {
+        var d = CGVector.zero
+        switch direction {
+        case .up:    d.dy = -min(rect.height * fraction, max(0, rect.minY - bounds.minY))
+        case .down:  d.dy = min(rect.height * fraction, max(0, bounds.maxY - rect.maxY))
+        case .left:  d.dx = -min(rect.width * fraction, max(0, rect.minX - bounds.minX))
+        case .right: d.dx = min(rect.width * fraction, max(0, bounds.maxX - rect.maxX))
+        }
+        return moved(by: d)
+    }
+
+    /// Its keys are shifted, or the whole grid has been slid.
+    var isShifted: Bool { offset != .zero || slide != .zero }
+
+    /// This grid with its keys back in place, and back where it was picked.
     var unshifted: Grid {
-        var g = self
+        var g = moved(by: CGVector(dx: -slide.dx, dy: -slide.dy))
         g.offset = .zero
+        g.slide = .zero
+        return g
+    }
+
+    /// The whole grid and its focus moved by `d`.
+    private func moved(by d: CGVector) -> Grid {
+        var g = self
+        g.rect = rect.offsetBy(dx: d.dx, dy: d.dy)
+        g.focus = CGPoint(x: focus.x + d.dx, y: focus.y + d.dy)
+        g.slide = CGVector(dx: slide.dx + d.dx, dy: slide.dy + d.dy)
         return g
     }
 
