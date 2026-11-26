@@ -210,7 +210,10 @@ final class OverlayController {
                 grid = grid.shifted(dir, by: step)
             } else {
                 grid = grid.slid(dir, by: step, within: view.bounds)
-                moveCursor(to: global(grid.focus))
+                // The box can hang off the screen; keep the mouse on it.
+                let b = view.bounds
+                moveCursor(to: global(CGPoint(x: min(max(grid.focus.x, b.minX), b.maxX - 1),
+                                              y: min(max(grid.focus.y, b.minY), b.maxY - 1))))
             }
             refresh()
         default:

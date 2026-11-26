@@ -68,14 +68,16 @@ struct Grid: Equatable {
     }
 
     /// This grid, keys, focus and all, moved `fraction` of its own width / height
-    /// toward `direction`, stopping at the edge of `bounds`. Its keys stay put inside it.
+    /// toward `direction`. It can hang off the edge of `bounds`, but stops with one
+    /// row / column of cells still on it. Its keys stay put inside it.
     func slid(_ direction: Direction, by fraction: CGFloat, within bounds: CGRect) -> Grid {
+        let s = cellSize
         var d = CGVector.zero
         switch direction {
-        case .up:    d.dy = -min(rect.height * fraction, max(0, rect.minY - bounds.minY))
-        case .down:  d.dy = min(rect.height * fraction, max(0, bounds.maxY - rect.maxY))
-        case .left:  d.dx = -min(rect.width * fraction, max(0, rect.minX - bounds.minX))
-        case .right: d.dx = min(rect.width * fraction, max(0, bounds.maxX - rect.maxX))
+        case .up:    d.dy = -min(rect.height * fraction, max(0, rect.maxY - s.height - bounds.minY))
+        case .down:  d.dy = min(rect.height * fraction, max(0, bounds.maxY - rect.minY - s.height))
+        case .left:  d.dx = -min(rect.width * fraction, max(0, rect.maxX - s.width - bounds.minX))
+        case .right: d.dx = min(rect.width * fraction, max(0, bounds.maxX - rect.minX - s.width))
         }
         return moved(by: d)
     }

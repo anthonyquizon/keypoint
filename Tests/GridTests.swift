@@ -208,17 +208,22 @@ struct GridTests {
         check(moved.slid(.left, by: 0.25, within: rect).focus == CGPoint(x: 360, y: 110), "a moved focus goes with it too")
     }
 
-    /// The box stops at the screen's edge rather than going off it.
+    /// The box can hang off the screen's edge, but stops with one row / column on it.
     static func slideStopsAtTheEdge() {
-        let g = Grid(rect: box)
+        let g = Grid(rect: box)   // cells 20 × 20
         var u = g
-        for _ in 0..<3 { u = u.slid(.up, by: 0.5, within: rect) }   // 100 → 60 → 20 → 0
-        check(u.rect == CGRect(x: 400, y: 0, width: 200, height: 80), "stops at the top")
-        check(u.focus == CGPoint(x: 500, y: 40), "focus stops with it")
+        for _ in 0..<5 { u = u.slid(.up, by: 0.5, within: rect) }   // 100 → 60 → 20 → -20 → -60 → -60
+        check(u.rect == CGRect(x: 400, y: -60, width: 200, height: 80), "off the top, bottom row still on")
+        check(u.focus == CGPoint(x: 500, y: -20), "focus goes off with it")
         check(u.unshifted == g, "and still goes back where it was picked")
         let corner = Grid(rect: CGRect(x: 800, y: 320, width: 200, height: 80))
-        check(corner.slid(.right, by: 0.5, within: rect) == corner, "already at the right edge: stays")
-        check(corner.slid(.down, by: 0.5, within: rect) == corner, "already at the bottom: stays")
-        check(!corner.slid(.right, by: 0.5, within: rect).isShifted, "not moved = not shifted")
+        check(corner.slid(.right, by: 0.5, within: rect).rect.minX == 900, "off the right edge")
+        var r = corner
+        for _ in 0..<10 { r = r.slid(.right, by: 0.5, within: rect) }
+        check(r.rect.minX == 980, "stops with the left column on screen")
+        check(r.slid(.right, by: 0.5, within: rect) == r, "then stays")
+        var d = corner
+        for _ in 0..<10 { d = d.slid(.down, by: 0.5, within: rect) }
+        check(d.rect.minY == 380, "stops with the top row on screen")
     }
 }

@@ -33,7 +33,7 @@ For more precision, the **arrows shift the grid** a sixteenth of a cell that way
 arrow: a quarter of a cell). The grid wraps round, so keys pushed off one edge come back on the
 other, and every key still clicks its centre. Once you've zoomed in, the arrows **move the
 whole box** instead: a sixteenth of its own size that way (`⇧`: a quarter), keys and mouse with it,
-stopping at the screen's edge — handy when what you want sits just across its border. `⌫`
+even off the screen's edge (it stops with one row / column still on it) — handy when what you want sits just across its border. `⌫`
 puts the keys (or the box) back (`defaults write local.keypoint shiftStep -float 0.0625`
 sets the step; `⇧` is four steps).
 
